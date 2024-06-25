@@ -14,13 +14,11 @@ import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.logging.Logger;
 
 @WebServlet({"/", "/*"})
 public class FrontControllerServlet extends HttpServlet {
     private String controllerPackage;
     private HashMap<String, Mapping> urlMappings;
-    private static final Logger LOGGER = Logger.getLogger(FrontControllerServlet.class.getName());
 
     @Override
     public void init() throws ServletException {
@@ -60,31 +58,16 @@ public class FrontControllerServlet extends HttpServlet {
         response.setContentType("text/html");
         PrintWriter out = response.getWriter();
 
-        ServletContext context = getServletContext();
-        @SuppressWarnings("unchecked")
-        List<Class<?>> controllers = (List<Class<?>>) context.getAttribute("cachedControllers");
-
-        if (controllers == null) {
-            try {
-                controllers = getClasses(controllerPackage);
-                context.setAttribute("cachedControllers", controllers);
-            } catch (ClassNotFoundException e) {
-                e.printStackTrace();
-            }
-        }
-
         String requestUrl = request.getRequestURI();
         String contextPath = request.getContextPath();
-        String servletPath = request.getServletPath();
-        String relativeUrl = requestUrl.substring(contextPath.length() + servletPath.length());
+        String relativeUrl = requestUrl.substring(contextPath.length());
 
-        LOGGER.info("Request URL: " + requestUrl + ", Context Path: " + contextPath + ", Servlet Path: " + servletPath + ", Relative URL: " + relativeUrl);
+        Mapping mapping = urlMappings.get(relativeUrl);
 
         out.println("<html><body>");
-
         if (relativeUrl.equals("/") || relativeUrl.equals("/listControllers")) {
             out.println("<h2>Controller Classes with Annotations:</h2>");
-            for (Class<?> controller : controllers) {
+            for (Class<?> controller : getControllerClasses()) {
                 boolean foundGetMethod = false;
                 StringBuilder urlPatterns = new StringBuilder();
                 for (Method method : controller.getDeclaredMethods()) {
@@ -100,25 +83,62 @@ public class FrontControllerServlet extends HttpServlet {
                 if (foundGetMethod) {
                     out.println("<p>URL Patterns: " + urlPatterns.toString() + "</p>");
                 }
-            }
+            } 
         } else {
-            Mapping mapping = urlMappings.get(relativeUrl);
             if (mapping != null) {
                 String simpleClassName = mapping.getClassName().substring(mapping.getClassName().lastIndexOf('.') + 1);
                 out.println("<h2>URL: " + relativeUrl + "</h2>");
-                out.println("<p>Class Name: " + simpleClassName + "</p>");
+                out.println("<p>Class: " + simpleClassName + "</p>");
                 out.println("<p>Method: " + mapping.getMethodName() + "</p>");
+
+                try {
+                    // Retrieve the class and method using reflection
+                    Class<?> clazz = Class.forName(mapping.getClassName());
+                    Method method = clazz.getDeclaredMethod(mapping.getMethodName(), HttpServletRequest.class, HttpServletResponse.class);
+
+                    // Make the method accessible
+                    method.setAccessible(true);
+
+                    // Create an instance of the class and invoke the method
+                    Object instance = clazz.getDeclaredConstructor().newInstance();
+                    String result = (String) method.invoke(instance, request, response);
+
+                    // Display the value returned by the method
+                    // Check the return type and display appropriately
+                    if (result instanceof String) {
+                        out.println("<p>Result: " + (String) result + "</p>");
+                    } else if (result != null) {
+                        out.println("<p>Result (Non-String): " + result.toString() + "</p>");
+                    } else {
+                        out.println("<p>Result: null</p>");
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace(out);
+                }
             } else {
                 out.println("<h2>No method associated with the URL: " + relativeUrl + "</h2>");
             }
         }
-
         out.println("</body></html>");
+    }
+
+    private List<Class<?>> getControllerClasses() {
+        ServletContext context = getServletContext();
+        @SuppressWarnings("unchecked")
+        List<Class<?>> controllers = (List<Class<?>>) context.getAttribute("cachedControllers");
+        if (controllers == null) {
+            try {
+                controllers = getClasses(controllerPackage);
+                context.setAttribute("cachedControllers", controllers);
+            } catch (ClassNotFoundException | IOException e) {
+                e.printStackTrace();
+            }
+        }
+        return controllers;
     }
 
     private List<Class<?>> getClasses(String packageName) throws IOException, ClassNotFoundException {
         ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
-        assert classLoader != null;
         String path = packageName.replace('.', '/');
         Enumeration<URL> resources = classLoader.getResources(path);
         List<File> dirs = new ArrayList<>();
@@ -141,7 +161,6 @@ public class FrontControllerServlet extends HttpServlet {
         File[] files = directory.listFiles();
         for (File file : files) {
             if (file.isDirectory()) {
-                assert !file.getName().contains(".");
                 classes.addAll(findClasses(file, packageName + "." + file.getName()));
             } else if (file.getName().endsWith(".class")) {
                 classes.add(Class.forName(packageName + '.' + file.getName().substring(0, file.getName().length() - 6)));
@@ -150,4 +169,3 @@ public class FrontControllerServlet extends HttpServlet {
         return classes;
     }
 }
-

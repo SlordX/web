@@ -53,8 +53,8 @@ Controller avec Annotation:
         }
 
         @GET("/custom")
-        protected void customGetMethod(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
-            response.getWriter().println("Custom GET request handled by customGetMethod");
+        protected String customGetMethod(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+            return "Custom GET request handled by customGetMethod";
         }
     }
 
@@ -91,7 +91,7 @@ Controller sans Annotation:
         String value(); // L'URL à laquelle la méthode doit répondre
     }
 
-# Mapping
+## Mapping
     package com.controller;
 
 public class Mapping {
@@ -116,4 +116,4 @@ public class Mapping {
 ## Usage
 4-Compilé le Servlet et Deployer
 5-Acceder aux Servlet en utilisant le lien : http://localhost:8080/nom_de_l'App/
-6-Acceder aux Donné du Mapping si L'URL existe en utilisant le lien : http://localhost:8080/nom_de_l'App/Custom
+6-Acceder aux Donné du Mapping si L'URL existe en utilisant le lien : http://localhost:8080/nom_de_l'App/Custom Tout en executant la methode du controller avec l'annotation `@GET`
