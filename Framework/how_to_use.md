@@ -11,27 +11,33 @@ If there is a `@GET` annotation display the URL with the name of the controller
 
 1-Configurer le Web.xml tels que celle ci pour mettre le chemin du dossier a scanner:
     <?xml version="1.0" encoding="UTF-8"?>
-    <web-app xmlns="http://xmlns.jcp.org/xml/ns/javaee"
-            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-            xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/javaee http://xmlns.jcp.org/xml/ns/javaee/web-app_4_0.xsd"
-            version="4.0">
+<web-app xmlns="http://xmlns.jcp.org/xml/ns/javaee"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/javaee http://xmlns.jcp.org/xml/ns/javaee/web-app_4_0.xsd"
+         version="4.0">
 
-        <!-- Specify the package to scan for controllers -->
-        <context-param>
-            <param-name>controllerPackage</param-name>
-            <param-value>com.controller</param-value> <!-- Path to the Controller Package -->
-        </context-param>
-            
-        <servlet>
-            <servlet-name>FrontControllerServlet</servlet-name>
-            <servlet-class>com.example.FrontControllerServlet</servlet-class> <!-- Path to the Servlet Package -->
-        </servlet>
+    <!-- Specify the package to scan for controllers -->
+    <context-param>
+        <param-name>controllerPackage</param-name>
+        <param-value>com.controller</param-value>
+    </context-param>
+         
+    <servlet>
+        <servlet-name>FrontControllerServlet</servlet-name>
+        <servlet-class>com.example.FrontControllerServlet</servlet-class>
+    </servlet>
 
-        <servlet-mapping>
-            <servlet-name>FrontControllerServlet</servlet-name>
-            <url-pattern>/</url-pattern> <!-- Lien Pour Essayer le Servlet -->
-        </servlet-mapping>   
-    </web-app>
+    <servlet-mapping>
+        <servlet-name>FrontControllerServlet</servlet-name>
+        <url-pattern>/front/*</url-pattern>
+    </servlet-mapping>
+
+    <welcome-file-list>
+        <welcome-file>public/index.html</welcome-file>
+    </welcome-file-list>
+
+    
+</web-app>
 
 2-Configurer les controller a scanner on utilison les annotation comme cela:
 Controller avec Annotation:
@@ -65,6 +71,25 @@ Controller avec Annotation:
         }
     }
 
+    et celui le controller avec la nouvelle annotation
+    package com.controller;
+
+    import jakarta.servlet.annotation.WebServlet;
+    import jakarta.servlet.http.HttpServlet;
+    import com.model.ModelView;
+
+    @WebServlet(name = "NameController", urlPatterns = {"/NameController"})
+    public class NameController extends HttpServlet {
+
+        @GET("/submit")
+        public ModelView submitName(@Param(name = "name") String name) {
+            ModelView modelView = new ModelView("/WEB-INF/views/displayName.jsp");
+            modelView.addData("name", name);
+            return modelView;
+        }
+    }
+
+
 
 
 Controller sans Annotation:
@@ -84,7 +109,7 @@ Controller sans Annotation:
         }
     }
 
-3-Crée le GET, Mapping et ModelView class comme cela 
+3-Crée le GET, Param, Mapping et ModelView class comme cela 
 # GET
     package com.controller;
 
@@ -118,7 +143,18 @@ public class Mapping {
     public void setMethodName(String methodName) { this.methodName = methodName; }
 }
 
-### ModelView
+###
+package com.controller;
+
+import java.lang.annotation.*;
+
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.PARAMETER)
+public @interface Param {
+    String name();
+}
+
+#### ModelView
     package com.model;
 
     import java.util.HashMap;
@@ -157,10 +193,37 @@ public class Mapping {
     </body>
     </html>
 
+5-N'oublier pas de crée les views 
+# index
+    <!DOCTYPE html>
+<html>
+<head>
+    <title>Soumettre un nom</title>
+</head>
+<body>
+    <form action="/sprintg/listControllers/submit" method="post">
+        <label for="name">Entrez votre nom :</label>
+        <input type="text" id="name" name="name">
+        <input type="submit" value="Soumettre">
+    </form>
+</body>
+</html>
+
+## displayName.jsp
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Afficher le nom</title>
+</head>
+<body>
+    <h1>Bonjour, ${name}!</h1>
+</body>
+</html>
+
 
 ## Usage
 5-Compilé le Servlet et Deployer
 6-Acceder aux Servlet en utilisant le lien : http://localhost:8080/nom_de_l'App/
-7-Si il y a des URL en double dans le Mapping une message d'erreur apparaitra  sinon 8
+7-On devrait directement arrivé dans l'index, entrer n'importe quel et on devrait etre reidirigé vers un modelView pour afficher l'input entrer 
 8-Acceder aux Donné du Mapping si L'URL existe en utilisant le lien : http://localhost:8080/nom_de_l'App/Custom Tout en executant la methode du controller avec l'annotation `@GET` pour renvoyer le ModelView et l'afficher via le views
 9-Acceder aux Donné du Mapping si L'URL existe en utilisant le lien :  http://localhost:8080/nom_de_l'App/Customa Tout en executant la methode du controller avec l'annotation `@GET` pour avoir les donnée comme dans le sprint3
