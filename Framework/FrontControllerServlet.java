@@ -16,11 +16,14 @@ import java.util.HashMap;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 @WebServlet({"/listControllers", "/listControllers/*"})
 public class FrontControllerServlet extends HttpServlet {
     private String controllerPackage;
     private HashMap<String, Mapping> urlMappings;
+    private static final Logger LOGGER = Logger.getLogger(FrontControllerServlet.class.getName());
 
     @Override
     public void init() throws ServletException {
@@ -36,6 +39,10 @@ public class FrontControllerServlet extends HttpServlet {
                     if (method.isAnnotationPresent(GET.class)) {
                         GET getAnnotation = method.getAnnotation(GET.class);
                         String url = "/listControllers" + getAnnotation.value();  // Prepend '/controller' to the annotation value
+                        if (urlMappings.containsKey(url)) {
+                            LOGGER.log(Level.SEVERE, "Duplicate URL mapping found: " + url);
+                            throw new ServletException("Duplicate URL mapping found for URL: " + url);
+                        }
                         Mapping mapping = new Mapping(controller.getName(), method.getName());
                         urlMappings.put(url, mapping);
                     }
@@ -104,50 +111,42 @@ public class FrontControllerServlet extends HttpServlet {
 
                 try {
                     // Get the class
-                Class<?> controllerClass = Class.forName(mapping.getClassName());
-                // Create an instance of the class
-                Object controllerInstance = controllerClass.getDeclaredConstructor().newInstance();
-                // Get the method
-                Method method = controllerClass.getDeclaredMethod(mapping.getMethodName(), HttpServletRequest.class, HttpServletResponse.class);
-                // Make the method accessible if it's not public
-                method.setAccessible(true);
-                // Invoke the method
-                Object result = method.invoke(controllerInstance, request, response);
+                    Class<?> controllerClass = Class.forName(mapping.getClassName());
+                    // Create an instance of the class
+                    Object controllerInstance = controllerClass.getDeclaredConstructor().newInstance();
+                    // Get the method
+                    Method method = controllerClass.getDeclaredMethod(mapping.getMethodName(), HttpServletRequest.class, HttpServletResponse.class);
+                    // Make the method accessible if it's not public
+                    method.setAccessible(true);
+                    // Invoke the method
+                    Object result = method.invoke(controllerInstance, request, response);
 
-                // Check the return type
-                if (result instanceof String) {
-                    // If return type is String, directly send it as response
-                    out.println(result);
-                } else if (result instanceof ModelView) {
-                    // If return type is ModelView, set attributes and dispatch to the specified URL
-                    ModelView modelView = (ModelView) result;
-                    // Set attributes
-                    for (Map.Entry<String, Object> entry : modelView.getData().entrySet()) {
-                        request.setAttribute(entry.getKey(), entry.getValue());
-                    }
-                    request.getRequestDispatcher(modelView.getUrl()).forward(request, response);
-                } else if (result != null) {
+                    // Check the return type
+                    if (result instanceof String) {
+                        // If return type is String, directly send it as response
+                        out.println(result);
+                    } else if (result instanceof ModelView) {
+                        // If return type is ModelView, set attributes and dispatch to the specified URL
+                        ModelView modelView = (ModelView) result;
+                        // Set attributes
+                        for (Map.Entry<String, Object> entry : modelView.getData().entrySet()) {
+                            request.setAttribute(entry.getKey(), entry.getValue());
+                        }
+                        request.getRequestDispatcher(modelView.getUrl()).forward(request, response);
+                    } else if (result != null) {
                         out.println("<p>Result (Non-String): " + result.toString() + "</p>");
                     } else {
                         out.println("<p>Result: null</p>");
                     }
                 } catch (Exception e) {
-                    e.printStackTrace(out);
+                    handleError(response, "Error processing request: " + e.getMessage());
+                    LOGGER.log(Level.SEVERE, "Error processing request", e);
                 }
             } else {
-                out.println("<h2>No method associated with the URL: " + relativeUrl + "</h2>");
+                handleError(response, "No method associated with the URL: " + relativeUrl);
             }
         } else {
-            if (mapping != null) {
-                // Check if it's a JSP view request
-                if (isJspViewRequest(relativeUrl)) {
-                    // Forward directly to the JSP view
-                    forwardToJspView(relativeUrl, request, response);
-                    return;  // Stop further processing               
-                } else {
-                    out.println("<h2>Aucune méthode ou vue associée à l'URL: " + relativeUrl + "</h2>");
-                }
-            }    
+            handleError(response, "Invalid URL request: " + relativeUrl);
         }
         out.println("</body></html>");
     }
@@ -197,5 +196,14 @@ public class FrontControllerServlet extends HttpServlet {
             }
         }
         return classes;
+    }
+
+    private void handleError(HttpServletResponse response, String errorMessage) throws IOException {
+        response.setContentType("text/html");
+        PrintWriter out = response.getWriter();
+        out.println("<html><body>");
+        out.println("<h2>Error</h2>");
+        out.println("<p>" + errorMessage + "</p>");
+        out.println("</body></html>");
     }
 }
