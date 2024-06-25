@@ -4,10 +4,12 @@ import jakarta.servlet.*;
 import jakarta.servlet.http.*;
 import com.controller.GET;
 import com.controller.Mapping;
+import com.controller.Param;
 import com.model.ModelView;
 import jakarta.servlet.annotation.*;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.io.File;
 import java.net.URL;
@@ -23,7 +25,7 @@ import java.util.logging.Logger;
 public class FrontControllerServlet extends HttpServlet {
     private String controllerPackage;
     private HashMap<String, Mapping> urlMappings;
-    private static final Logger LOGGER = Logger.getLogger(FrontControllerServlet.class.getName());
+     private static final Logger LOGGER = Logger.getLogger(FrontControllerServlet.class.getName());
 
     @Override
     public void init() throws ServletException {
@@ -66,7 +68,7 @@ public class FrontControllerServlet extends HttpServlet {
     private boolean isJspViewRequest(String url) {
         return url.startsWith("/WEB-INF/");
     }
-    
+
     private void forwardToJspView(String viewUrl, HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
         RequestDispatcher dispatcher = request.getRequestDispatcher(viewUrl);
         dispatcher.forward(request, response);
@@ -79,6 +81,11 @@ public class FrontControllerServlet extends HttpServlet {
         String requestUrl = request.getRequestURI();
         String contextPath = request.getContextPath();
         String relativeUrl = requestUrl.substring(contextPath.length());
+
+        // Handle query parameters in the URL
+        if (relativeUrl.contains("?")) {
+           relativeUrl = relativeUrl.substring(0, relativeUrl.indexOf('?'));
+        }
 
         Mapping mapping = urlMappings.get(relativeUrl);
 
@@ -101,7 +108,7 @@ public class FrontControllerServlet extends HttpServlet {
                 if (foundGetMethod) {
                     out.println("<p>URL Patterns: " + urlPatterns.toString() + "</p>");
                 }
-            } 
+            }
         } else if (relativeUrl.startsWith("/listControllers/")) {
             if (mapping != null) {
                 String simpleClassName = mapping.getClassName().substring(mapping.getClassName().lastIndexOf('.') + 1);
@@ -115,11 +122,15 @@ public class FrontControllerServlet extends HttpServlet {
                     // Create an instance of the class
                     Object controllerInstance = controllerClass.getDeclaredConstructor().newInstance();
                     // Get the method
-                    Method method = controllerClass.getDeclaredMethod(mapping.getMethodName(), HttpServletRequest.class, HttpServletResponse.class);
+                    Method method = getControllerMethod(controllerClass, mapping.getMethodName());
                     // Make the method accessible if it's not public
                     method.setAccessible(true);
+
+                    // Prepare the parameters for the method
+                    Object[] methodParams = prepareMethodParams(method, request, response);
+
                     // Invoke the method
-                    Object result = method.invoke(controllerInstance, request, response);
+                    Object result = method.invoke(controllerInstance, methodParams);
 
                     // Check the return type
                     if (result instanceof String) {
@@ -146,9 +157,61 @@ public class FrontControllerServlet extends HttpServlet {
                 handleError(response, "No method associated with the URL: " + relativeUrl);
             }
         } else {
-            handleError(response, "Invalid URL request: " + relativeUrl);
+            if (mapping != null) {
+                // Check if it's a JSP view request
+                if (isJspViewRequest(relativeUrl)) {
+                    // Forward directly to the JSP view
+                    forwardToJspView(relativeUrl, request, response);
+                    return;  // Stop further processing               
+                } else {
+                    handleError(response, "No method associated with the URL: " + relativeUrl);
+                }
+            }
         }
         out.println("</body></html>");
+    }
+
+    private Method getControllerMethod(Class<?> controllerClass, String methodName) throws NoSuchMethodException {
+        for (Method method : controllerClass.getDeclaredMethods()) {
+            if (method.getName().equals(methodName)) {
+                return method;
+            }
+        }
+        throw new NoSuchMethodException(controllerClass.getName() + "." + methodName);
+    }
+
+    private Object[] prepareMethodParams(Method method, HttpServletRequest request, HttpServletResponse response) {
+        Class<?>[] paramTypes = method.getParameterTypes();
+        Annotation[][] paramAnnotations = method.getParameterAnnotations();
+        Object[] params = new Object[paramTypes.length];
+
+        for (int i = 0; i < paramTypes.length; i++) {
+            for (Annotation annotation : paramAnnotations[i]) {
+                if (annotation instanceof Param) {
+                    Param param = (Param) annotation;
+                    String paramName = param.name();
+                    String paramValue = request.getParameter(paramName);
+                    params[i] = convert(paramTypes[i], paramValue);
+                } else if (paramTypes[i] == HttpServletRequest.class) {
+                    params[i] = request;
+                } else if (paramTypes[i] == HttpServletResponse.class) {
+                    params[i] = response;
+                }
+            }
+        }
+        return params;
+    }
+
+    private Object convert(Class<?> type, String value) {
+        if (type == String.class) {
+            return value;
+        } else if (type == int.class || type == Integer.class) {
+            return Integer.parseInt(value);
+        } else if (type == boolean.class || type == Boolean.class) {
+            return Boolean.parseBoolean(value);
+        }
+        // Add more conversions if needed
+        return null;
     }
 
     private List<Class<?>> getControllerClasses() {
