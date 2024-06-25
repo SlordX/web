@@ -109,7 +109,7 @@ Controller sans Annotation:
         }
     }
 
-3-Crée le GET, Param, Mapping et ModelView class comme cela 
+3-Crée le GET, Param, FormField, RequestObject, User, UserController, Mapping et ModelView class comme cela 
 # GET
     package com.controller;
 
@@ -143,7 +143,7 @@ public class Mapping {
     public void setMethodName(String methodName) { this.methodName = methodName; }
 }
 
-###
+### Param
 package com.controller;
 
 import java.lang.annotation.*;
@@ -154,7 +154,85 @@ public @interface Param {
     String name();
 }
 
-#### ModelView
+#### FormField
+package com.controller;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.FIELD)
+public @interface FormField {
+    String value() default "";
+}
+
+##### RequestObject
+package com.controller;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.PARAMETER)
+public @interface RequestObject {
+}
+
+###### User
+package com.controller;
+
+import com.controller.FormField;
+
+public class User {
+    @FormField("user_name")
+    private String name;
+
+    @FormField("user_age")
+    private int age;
+
+    // Getters and setters
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public int getAge() {
+        return age;
+    }
+
+    public void setAge(int age) {
+        this.age = age;
+    }
+}
+
+###### UserController
+package com.controller;
+
+import jakarta.servlet.annotation.WebServlet;
+import jakarta.servlet.http.HttpServlet;
+import com.controller.GET;
+import com.controller.RequestObject;
+import com.model.ModelView;
+import com.controller.User;
+
+@WebServlet(name = "UserController", urlPatterns = {"/UserController"})
+public class UserController extends HttpServlet {
+
+    @GET("/submitUser")
+    public ModelView submitUser(@RequestObject User user) {
+        ModelView mv = new ModelView("/WEB-INF/views/userResult.jsp");
+        mv.addData("user", user);
+        return mv;
+    }
+}
+
+###### ModelView
     package com.model;
 
     import java.util.HashMap;
@@ -220,10 +298,22 @@ public @interface Param {
 </body>
 </html>
 
+### UserResult.jsp
+<!DOCTYPE html>
+<html>
+<head>
+    <title>User Result</title>
+</head>
+<body>
+    <h1>User Details</h1>
+    <p>Name: ${user.name}</p>
+    <p>Age: ${user.age}</p>
+</body>
+</html>
 
 ## Usage
 5-Compilé le Servlet et Deployer
 6-Acceder aux Servlet en utilisant le lien : http://localhost:8080/nom_de_l'App/
-7-On devrait directement arrivé dans l'index, entrer n'importe quel et on devrait etre reidirigé vers un modelView pour afficher l'input entrer 
+7-On devrait directement arrivé dans l'index avec 2 inputs pour le sprint7 et 1 input pour le sprint6 entrer n'importe quel et on devrait etre reidirigé vers un modelView pour afficher l'input entrer 
 8-Acceder aux Donné du Mapping si L'URL existe en utilisant le lien : http://localhost:8080/nom_de_l'App/Custom Tout en executant la methode du controller avec l'annotation `@GET` pour renvoyer le ModelView et l'afficher via le views
 9-Acceder aux Donné du Mapping si L'URL existe en utilisant le lien :  http://localhost:8080/nom_de_l'App/Customa Tout en executant la methode du controller avec l'annotation `@GET` pour avoir les donnée comme dans le sprint3
