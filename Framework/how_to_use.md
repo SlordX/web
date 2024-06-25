@@ -42,21 +42,29 @@ Controller avec Annotation:
     import jakarta.servlet.*;
     import jakarta.servlet.http.*;
     import jakarta.servlet.annotation.*;
+    import com.model.ModelView;
 
     @WebServlet(name = "AnnotatedController", urlPatterns = {"/annotatedController"})
     public class AnnotatedController extends HttpServlet {
 
         @Override
         protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
-            // Default implementation for doGet
             response.getWriter().println("GET request handled by AnnotatedController");
         }
 
         @GET("/custom")
-        protected String customGetMethod(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
-            return "Custom GET request handled by customGetMethod";
+        protected ModelView customGetMethod(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+            ModelView mv = new ModelView("/WEB-INF/views/customView.jsp");
+            mv.addObject("message", "Custom GET request handled by customGetMethod");
+            return mv;
+        }
+
+        @GET("/customa")
+        protected String customGetMethods(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+            return "Custom GET request handled by customGetMethods";
         }
     }
+
 
 
 Controller sans Annotation:
@@ -76,7 +84,7 @@ Controller sans Annotation:
         }
     }
 
-3-Crée le GET et Mapping class comme cela 
+3-Crée le GET, Mapping et ModelView class comme cela 
 # GET
     package com.controller;
 
@@ -110,10 +118,48 @@ public class Mapping {
     public void setMethodName(String methodName) { this.methodName = methodName; }
 }
 
+### ModelView
+    package com.model;
 
-    
+    import java.util.HashMap;
+
+    public class ModelView {
+        private String url;
+        private HashMap<String, Object> data;
+
+        public ModelView(String url) {
+            this.url = url;
+            this.data = new HashMap<>();
+        }
+
+        public String getUrl() {
+            return url;
+        }
+
+        public HashMap<String, Object> getData() {
+            return data;
+        }
+
+        public void addObject(String key, Object value) {
+            this.data.put(key, value);
+        }
+    }
+
+4-Crée le view dans WEB-INF/views
+# customView.jsp
+    <%@ page contentType="text/html;charset=UTF-8" language="java" %>
+    <html>
+    <head>
+        <title>Custom View</title>
+    </head>
+    <body>
+        <h2>${message}</h2>
+    </body>
+    </html>
+
 
 ## Usage
-4-Compilé le Servlet et Deployer
-5-Acceder aux Servlet en utilisant le lien : http://localhost:8080/nom_de_l'App/
-6-Acceder aux Donné du Mapping si L'URL existe en utilisant le lien : http://localhost:8080/nom_de_l'App/Custom Tout en executant la methode du controller avec l'annotation `@GET`
+5-Compilé le Servlet et Deployer
+6-Acceder aux Servlet en utilisant le lien : http://localhost:8080/nom_de_l'App/
+7-Acceder aux Donné du Mapping si L'URL existe en utilisant le lien : http://localhost:8080/nom_de_l'App/Custom Tout en executant la methode du controller avec l'annotation `@GET` pour renvoyer le ModelView et l'afficher via le views
+8-Acceder aux Donné du Mapping si L'URL existe en utilisant le lien :  http://localhost:8080/nom_de_l'App/Customa Tout en executant la methode du controller avec l'annotation `@GET` pour avoir les donnée comme dans le sprint3

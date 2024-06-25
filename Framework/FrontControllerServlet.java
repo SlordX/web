@@ -4,6 +4,7 @@ import jakarta.servlet.*;
 import jakarta.servlet.http.*;
 import com.controller.GET;
 import com.controller.Mapping;
+import com.model.ModelView;
 import jakarta.servlet.annotation.*;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -14,8 +15,9 @@ import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
-@WebServlet({"/", "/*"})
+@WebServlet({"/listControllers", "/listControllers/*"})
 public class FrontControllerServlet extends HttpServlet {
     private String controllerPackage;
     private HashMap<String, Mapping> urlMappings;
@@ -33,7 +35,7 @@ public class FrontControllerServlet extends HttpServlet {
                 for (Method method : controller.getDeclaredMethods()) {
                     if (method.isAnnotationPresent(GET.class)) {
                         GET getAnnotation = method.getAnnotation(GET.class);
-                        String url = getAnnotation.value();
+                        String url = "/listControllers" + getAnnotation.value();  // Prepend '/controller' to the annotation value
                         Mapping mapping = new Mapping(controller.getName(), method.getName());
                         urlMappings.put(url, mapping);
                     }
@@ -54,6 +56,15 @@ public class FrontControllerServlet extends HttpServlet {
         processRequest(request, response);
     }
 
+    private boolean isJspViewRequest(String url) {
+        return url.startsWith("/WEB-INF/");
+    }
+    
+    private void forwardToJspView(String viewUrl, HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        RequestDispatcher dispatcher = request.getRequestDispatcher(viewUrl);
+        dispatcher.forward(request, response);
+    }
+
     private void processRequest(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
         response.setContentType("text/html");
         PrintWriter out = response.getWriter();
@@ -65,7 +76,7 @@ public class FrontControllerServlet extends HttpServlet {
         Mapping mapping = urlMappings.get(relativeUrl);
 
         out.println("<html><body>");
-        if (relativeUrl.equals("/") || relativeUrl.equals("/listControllers")) {
+        if (relativeUrl.equals("/listControllers")) {
             out.println("<h2>Controller Classes with Annotations:</h2>");
             for (Class<?> controller : getControllerClasses()) {
                 boolean foundGetMethod = false;
@@ -84,7 +95,7 @@ public class FrontControllerServlet extends HttpServlet {
                     out.println("<p>URL Patterns: " + urlPatterns.toString() + "</p>");
                 }
             } 
-        } else {
+        } else if (relativeUrl.startsWith("/listControllers/")) {
             if (mapping != null) {
                 String simpleClassName = mapping.getClassName().substring(mapping.getClassName().lastIndexOf('.') + 1);
                 out.println("<h2>URL: " + relativeUrl + "</h2>");
@@ -92,22 +103,30 @@ public class FrontControllerServlet extends HttpServlet {
                 out.println("<p>Method: " + mapping.getMethodName() + "</p>");
 
                 try {
-                    // Retrieve the class and method using reflection
-                    Class<?> clazz = Class.forName(mapping.getClassName());
-                    Method method = clazz.getDeclaredMethod(mapping.getMethodName(), HttpServletRequest.class, HttpServletResponse.class);
+                    // Get the class
+                Class<?> controllerClass = Class.forName(mapping.getClassName());
+                // Create an instance of the class
+                Object controllerInstance = controllerClass.getDeclaredConstructor().newInstance();
+                // Get the method
+                Method method = controllerClass.getDeclaredMethod(mapping.getMethodName(), HttpServletRequest.class, HttpServletResponse.class);
+                // Make the method accessible if it's not public
+                method.setAccessible(true);
+                // Invoke the method
+                Object result = method.invoke(controllerInstance, request, response);
 
-                    // Make the method accessible
-                    method.setAccessible(true);
-
-                    // Create an instance of the class and invoke the method
-                    Object instance = clazz.getDeclaredConstructor().newInstance();
-                    String result = (String) method.invoke(instance, request, response);
-
-                    // Display the value returned by the method
-                    // Check the return type and display appropriately
-                    if (result instanceof String) {
-                        out.println("<p>Result: " + (String) result + "</p>");
-                    } else if (result != null) {
+                // Check the return type
+                if (result instanceof String) {
+                    // If return type is String, directly send it as response
+                    out.println(result);
+                } else if (result instanceof ModelView) {
+                    // If return type is ModelView, set attributes and dispatch to the specified URL
+                    ModelView modelView = (ModelView) result;
+                    // Set attributes
+                    for (Map.Entry<String, Object> entry : modelView.getData().entrySet()) {
+                        request.setAttribute(entry.getKey(), entry.getValue());
+                    }
+                    request.getRequestDispatcher(modelView.getUrl()).forward(request, response);
+                } else if (result != null) {
                         out.println("<p>Result (Non-String): " + result.toString() + "</p>");
                     } else {
                         out.println("<p>Result: null</p>");
@@ -118,6 +137,17 @@ public class FrontControllerServlet extends HttpServlet {
             } else {
                 out.println("<h2>No method associated with the URL: " + relativeUrl + "</h2>");
             }
+        } else {
+            if (mapping != null) {
+                // Check if it's a JSP view request
+                if (isJspViewRequest(relativeUrl)) {
+                    // Forward directly to the JSP view
+                    forwardToJspView(relativeUrl, request, response);
+                    return;  // Stop further processing               
+                } else {
+                    out.println("<h2>Aucune méthode ou vue associée à l'URL: " + relativeUrl + "</h2>");
+                }
+            }    
         }
         out.println("</body></html>");
     }
