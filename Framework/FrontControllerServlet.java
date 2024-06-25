@@ -3,13 +3,17 @@ package com.example;
 import jakarta.servlet.*;
 import jakarta.servlet.http.*;
 import com.controller.GET;
-import com.controller.Mapping;
 import com.controller.Param;
+import com.controller.RequestObject;
+import com.controller.FormField;
+import com.controller.Mapping;
 import com.model.ModelView;
 import jakarta.servlet.annotation.*;
+
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.lang.annotation.Annotation;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.io.File;
 import java.net.URL;
@@ -25,7 +29,7 @@ import java.util.logging.Logger;
 public class FrontControllerServlet extends HttpServlet {
     private String controllerPackage;
     private HashMap<String, Mapping> urlMappings;
-     private static final Logger LOGGER = Logger.getLogger(FrontControllerServlet.class.getName());
+    private static final Logger LOGGER = Logger.getLogger(FrontControllerServlet.class.getName());
 
     @Override
     public void init() throws ServletException {
@@ -40,7 +44,7 @@ public class FrontControllerServlet extends HttpServlet {
                 for (Method method : controller.getDeclaredMethods()) {
                     if (method.isAnnotationPresent(GET.class)) {
                         GET getAnnotation = method.getAnnotation(GET.class);
-                        String url = "/listControllers" + getAnnotation.value();  // Prepend '/controller' to the annotation value
+                        String url = "/listControllers" + getAnnotation.value();
                         if (urlMappings.containsKey(url)) {
                             LOGGER.log(Level.SEVERE, "Duplicate URL mapping found: " + url);
                             throw new ServletException("Duplicate URL mapping found for URL: " + url);
@@ -82,7 +86,6 @@ public class FrontControllerServlet extends HttpServlet {
         String contextPath = request.getContextPath();
         String relativeUrl = requestUrl.substring(contextPath.length());
 
-        // Handle query parameters in the URL
         if (relativeUrl.contains("?")) {
            relativeUrl = relativeUrl.substring(0, relativeUrl.indexOf('?'));
         }
@@ -117,29 +120,19 @@ public class FrontControllerServlet extends HttpServlet {
                 out.println("<p>Method: " + mapping.getMethodName() + "</p>");
 
                 try {
-                    // Get the class
                     Class<?> controllerClass = Class.forName(mapping.getClassName());
-                    // Create an instance of the class
                     Object controllerInstance = controllerClass.getDeclaredConstructor().newInstance();
-                    // Get the method
                     Method method = getControllerMethod(controllerClass, mapping.getMethodName());
-                    // Make the method accessible if it's not public
                     method.setAccessible(true);
 
-                    // Prepare the parameters for the method
                     Object[] methodParams = prepareMethodParams(method, request, response);
 
-                    // Invoke the method
                     Object result = method.invoke(controllerInstance, methodParams);
 
-                    // Check the return type
                     if (result instanceof String) {
-                        // If return type is String, directly send it as response
                         out.println(result);
                     } else if (result instanceof ModelView) {
-                        // If return type is ModelView, set attributes and dispatch to the specified URL
                         ModelView modelView = (ModelView) result;
-                        // Set attributes
                         for (Map.Entry<String, Object> entry : modelView.getData().entrySet()) {
                             request.setAttribute(entry.getKey(), entry.getValue());
                         }
@@ -158,11 +151,9 @@ public class FrontControllerServlet extends HttpServlet {
             }
         } else {
             if (mapping != null) {
-                // Check if it's a JSP view request
                 if (isJspViewRequest(relativeUrl)) {
-                    // Forward directly to the JSP view
                     forwardToJspView(relativeUrl, request, response);
-                    return;  // Stop further processing               
+                    return;
                 } else {
                     handleError(response, "No method associated with the URL: " + relativeUrl);
                 }
@@ -180,7 +171,7 @@ public class FrontControllerServlet extends HttpServlet {
         throw new NoSuchMethodException(controllerClass.getName() + "." + methodName);
     }
 
-    private Object[] prepareMethodParams(Method method, HttpServletRequest request, HttpServletResponse response) {
+    private Object[] prepareMethodParams(Method method, HttpServletRequest request, HttpServletResponse response) throws Exception {
         Class<?>[] paramTypes = method.getParameterTypes();
         Annotation[][] paramAnnotations = method.getParameterAnnotations();
         Object[] params = new Object[paramTypes.length];
@@ -192,6 +183,8 @@ public class FrontControllerServlet extends HttpServlet {
                     String paramName = param.name();
                     String paramValue = request.getParameter(paramName);
                     params[i] = convert(paramTypes[i], paramValue);
+                } else if (annotation instanceof RequestObject) {
+                    params[i] = populateRequestObject(paramTypes[i], request);
                 } else if (paramTypes[i] == HttpServletRequest.class) {
                     params[i] = request;
                 } else if (paramTypes[i] == HttpServletResponse.class) {
@@ -200,6 +193,25 @@ public class FrontControllerServlet extends HttpServlet {
             }
         }
         return params;
+    }
+
+    private Object populateRequestObject(Class<?> paramType, HttpServletRequest request) throws Exception {
+        Object obj = paramType.getDeclaredConstructor().newInstance();
+
+        for (Field field : paramType.getDeclaredFields()) {
+            String paramName = field.getName();
+            if (field.isAnnotationPresent(FormField.class)) {
+                FormField formField = field.getAnnotation(FormField.class);
+                if (!formField.value().isEmpty()) {
+                    paramName = formField.value();
+                }
+            }
+            String paramValue = request.getParameter(paramName);
+            field.setAccessible(true);
+            field.set(obj, convert(field.getType(), paramValue));
+        }
+
+        return obj;
     }
 
     private Object convert(Class<?> type, String value) {
