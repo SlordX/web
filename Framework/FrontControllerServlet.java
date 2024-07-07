@@ -7,6 +7,7 @@ import com.controller.Param;
 import com.controller.RequestObject;
 import com.controller.FormField;
 import com.controller.Mapping;
+import com.controller.POST;
 import com.model.ModelView;
 import jakarta.servlet.annotation.*;
 
@@ -51,6 +52,15 @@ public class FrontControllerServlet extends HttpServlet {
                         }
                         Mapping mapping = new Mapping(controller.getName(), method.getName());
                         urlMappings.put(url, mapping);
+                    } else if (method.isAnnotationPresent(POST.class)) {
+                        POST postAnnotation = method.getAnnotation(POST.class);
+                        String url = "/listControllers" + postAnnotation.value();
+                        if (urlMappings.containsKey(url)) {
+                            LOGGER.log(Level.SEVERE, "Duplicate URL mapping found: " + url);
+                            throw new ServletException("Duplicate URL mapping found for URL: " + url);
+                        }
+                        Mapping mapping = new Mapping(controller.getName(), method.getName());
+                        urlMappings.put(url, mapping);
                     }
                 }
             }
@@ -58,6 +68,7 @@ public class FrontControllerServlet extends HttpServlet {
             throw new ServletException("Error scanning controllers", e);
         }
     }
+
 
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
@@ -73,42 +84,37 @@ public class FrontControllerServlet extends HttpServlet {
         return url.startsWith("/WEB-INF/");
     }
 
-    private void forwardToJspView(String viewUrl, HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
-        RequestDispatcher dispatcher = request.getRequestDispatcher(viewUrl);
-        dispatcher.forward(request, response);
-    }
-
     private void processRequest(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
         response.setContentType("text/html");
         PrintWriter out = response.getWriter();
-
+    
         String requestUrl = request.getRequestURI();
         String contextPath = request.getContextPath();
         String relativeUrl = requestUrl.substring(contextPath.length());
-
+    
         if (relativeUrl.contains("?")) {
            relativeUrl = relativeUrl.substring(0, relativeUrl.indexOf('?'));
         }
-
+    
         Mapping mapping = urlMappings.get(relativeUrl);
-
+    
         out.println("<html><body>");
         if (relativeUrl.equals("/listControllers")) {
             out.println("<h2>Controller Classes with Annotations:</h2>");
             for (Class<?> controller : getControllerClasses()) {
-                boolean foundGetMethod = false;
+                boolean foundMethod = false;
                 StringBuilder urlPatterns = new StringBuilder();
                 for (Method method : controller.getDeclaredMethods()) {
-                    if (method.isAnnotationPresent(GET.class)) {
-                        GET getAnnotation = method.getAnnotation(GET.class);
-                        if (!foundGetMethod) {
+                    if (method.isAnnotationPresent(GET.class) || method.isAnnotationPresent(POST.class)) {
+                        String urlPattern = method.isAnnotationPresent(GET.class) ? method.getAnnotation(GET.class).value() : method.getAnnotation(POST.class).value();
+                        if (!foundMethod) {
                             out.println("<p>" + controller.getSimpleName() + "</p>");
-                            foundGetMethod = true;
+                            foundMethod = true;
                         }
-                        urlPatterns.append(getAnnotation.value()).append("<br>");
+                        urlPatterns.append(urlPattern).append("<br>");
                     }
                 }
-                if (foundGetMethod) {
+                if (foundMethod) {
                     out.println("<p>URL Patterns: " + urlPatterns.toString() + "</p>");
                 }
             }
@@ -118,17 +124,17 @@ public class FrontControllerServlet extends HttpServlet {
                 out.println("<h2>URL: " + relativeUrl + "</h2>");
                 out.println("<p>Class: " + simpleClassName + "</p>");
                 out.println("<p>Method: " + mapping.getMethodName() + "</p>");
-
+    
                 try {
                     Class<?> controllerClass = Class.forName(mapping.getClassName());
                     Object controllerInstance = controllerClass.getDeclaredConstructor().newInstance();
                     Method method = getControllerMethod(controllerClass, mapping.getMethodName());
                     method.setAccessible(true);
-
+    
                     Object[] methodParams = prepareMethodParams(method, request, response);
-
+    
                     Object result = method.invoke(controllerInstance, methodParams);
-
+    
                     if (result instanceof String) {
                         out.println(result);
                     } else if (result instanceof ModelView) {
@@ -162,6 +168,11 @@ public class FrontControllerServlet extends HttpServlet {
         out.println("</body></html>");
     }
 
+    private void forwardToJspView(String viewUrl, HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        RequestDispatcher dispatcher = request.getRequestDispatcher(viewUrl);
+        dispatcher.forward(request, response);
+    }    
+
     private Method getControllerMethod(Class<?> controllerClass, String methodName) throws NoSuchMethodException {
         for (Method method : controllerClass.getDeclaredMethods()) {
             if (method.getName().equals(methodName)) {
@@ -175,25 +186,30 @@ public class FrontControllerServlet extends HttpServlet {
         Class<?>[] paramTypes = method.getParameterTypes();
         Annotation[][] paramAnnotations = method.getParameterAnnotations();
         Object[] params = new Object[paramTypes.length];
-
+    
         for (int i = 0; i < paramTypes.length; i++) {
-            for (Annotation annotation : paramAnnotations[i]) {
-                if (annotation instanceof Param) {
-                    Param param = (Param) annotation;
-                    String paramName = param.name();
-                    String paramValue = request.getParameter(paramName);
-                    params[i] = convert(paramTypes[i], paramValue);
-                } else if (annotation instanceof RequestObject) {
-                    params[i] = populateRequestObject(paramTypes[i], request);
-                } else if (paramTypes[i] == HttpServletRequest.class) {
-                    params[i] = request;
-                } else if (paramTypes[i] == HttpServletResponse.class) {
-                    params[i] = response;
+            if (paramTypes[i] == MySession.class) {
+                params[i] = new MySession(request.getSession());
+            } else {
+                for (Annotation annotation : paramAnnotations[i]) {
+                    if (annotation instanceof Param) {
+                        Param param = (Param) annotation;
+                        String paramName = param.name();
+                        String paramValue = request.getParameter(paramName);
+                        params[i] = convert(paramTypes[i], paramValue);
+                    } else if (annotation instanceof RequestObject) {
+                        params[i] = populateRequestObject(paramTypes[i], request);
+                    } else if (paramTypes[i] == HttpServletRequest.class) {
+                        params[i] = request;
+                    } else if (paramTypes[i] == HttpServletResponse.class) {
+                        params[i] = response;
+                    }
                 }
             }
         }
         return params;
     }
+    
 
     private Object populateRequestObject(Class<?> paramType, HttpServletRequest request) throws Exception {
         Object obj = paramType.getDeclaredConstructor().newInstance();

@@ -109,7 +109,7 @@ Controller sans Annotation:
         }
     }
 
-3-Crée le GET, Param, FormField, RequestObject, User, UserController, Mapping et ModelView class comme cela 
+3-Crée le GET, POST, Param, FormField, RequestObject, User, UserController, Mapping et ModelView class comme cela 
 # GET
     package com.controller;
 
@@ -122,6 +122,20 @@ Controller sans Annotation:
     @Target(ElementType.METHOD) // Cette annotation est applicable uniquement aux méthodes
     public @interface GET {
         String value(); // L'URL à laquelle la méthode doit répondre
+    }
+
+# POST
+    package com.controller;
+
+    import java.lang.annotation.ElementType;
+    import java.lang.annotation.Retention;
+    import java.lang.annotation.RetentionPolicy;
+    import java.lang.annotation.Target;
+
+    @Retention(RetentionPolicy.RUNTIME)
+    @Target(ElementType.METHOD)
+    public @interface POST {
+        String value();
     }
 
 ## Mapping
@@ -214,15 +228,28 @@ public class User {
 ###### UserController
 package com.controller;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
 import com.controller.GET;
 import com.controller.RequestObject;
 import com.model.ModelView;
 import com.controller.User;
+import com.example.MySession;
+import com.example.UserDataStore;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 @WebServlet(name = "UserController", urlPatterns = {"/UserController"})
 public class UserController extends HttpServlet {
+
+    // Hardcoded credentials
+    private static final String HARDCODED_USERNAME_1 = "user1";
+    private static final String HARDCODED_PASSWORD_1 = "password1";
+    private static final String HARDCODED_USERNAME_2 = "user2";
+    private static final String HARDCODED_PASSWORD_2 = "password2";
 
     @GET("/submitUser")
     public ModelView submitUser(@RequestObject User user) {
@@ -230,34 +257,145 @@ public class UserController extends HttpServlet {
         mv.addData("user", user);
         return mv;
     }
+
+    @GET("/login")
+    public ModelView showLoginForm() {
+        ModelView mv = new ModelView("/WEB-INF/views/login.jsp");
+        return mv;
+    }
+
+    @POST("/logins")
+    public ModelView login(@Param(name = "username") String username,
+                           @Param(name = "password") String password,
+                           MySession session) {
+        // Simulate user authentication
+        if ((HARDCODED_USERNAME_1.equals(username) && HARDCODED_PASSWORD_1.equals(password)) ||
+            (HARDCODED_USERNAME_2.equals(username) && HARDCODED_PASSWORD_2.equals(password))) {
+            session.add("username", username);
+            ModelView mv = new ModelView("/WEB-INF/views/userData.jsp");
+            mv.addAttribute("username", username);  // Add username to be displayed in the view
+            mv.addAttribute("dataList", UserDataStore.getUserData(username));
+            return mv;
+        } else {
+            ModelView mv = new ModelView("/WEB-INF/views/login.jsp");
+            mv.addAttribute("error", "Invalid credentials");
+            return mv;
+        }
+    }
+
+    @GET("/logout")
+    public ModelView logout(MySession session) {
+        session.delete("username");
+        ModelView mv = new ModelView("/WEB-INF/views/login.jsp");
+        return mv;
+    }
+
+    private List<String> getUserData(String username) {
+        // Simulate fetching user-specific data
+        List<String> dataList = new ArrayList<>();
+        dataList.add("Data 1 for " + username);
+        dataList.add("Data 2 for " + username);
+        dataList.add("Data 3 for " + username);
+        return dataList;
+    }
 }
 
 ###### ModelView
     package com.model;
 
-    import java.util.HashMap;
+import java.util.HashMap;
+import java.util.Map;
 
-    public class ModelView {
-        private String url;
-        private HashMap<String, Object> data;
+public class ModelView {
+    private String url;
+    private HashMap<String, Object> data;
 
-        public ModelView(String url) {
-            this.url = url;
-            this.data = new HashMap<>();
-        }
-
-        public String getUrl() {
-            return url;
-        }
-
-        public HashMap<String, Object> getData() {
-            return data;
-        }
-
-        public void addObject(String key, Object value) {
-            this.data.put(key, value);
-        }
+    public ModelView(String url) {
+        this.url = url;
+        this.data = new HashMap<>();
     }
+
+    public String getUrl() {
+        return url;
+    }
+
+    public void setUrl(String url) {
+        this.url = url;
+    }
+
+    public void addAttribute(String key, Object value) {
+        data.put(key, value);
+    }
+
+    public HashMap<String, Object> getData() {
+        return data;
+    }
+
+    public void addObject(String key, Object value) {
+        this.data.put(key, value);
+    }
+
+    public void addData(String key, Object value) {
+        this.data.put(key, value);
+    }
+}
+
+##### MySession
+package com.example;
+
+import jakarta.servlet.http.HttpSession;
+
+public class MySession {
+    private HttpSession session;
+
+    public MySession(HttpSession session) {
+        this.session = session;
+    }
+
+    public Object get(String key) {
+        return session.getAttribute(key);
+    }
+
+    public void add(String key, Object object) {
+        session.setAttribute(key, object);
+    }
+
+    public void delete(String key) {
+        session.removeAttribute(key);
+    }
+}
+
+###### UserDataStorage
+package com.example;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+public class UserDataStore {
+    private static final Map<String, List<String>> userData = new HashMap<>();
+
+    static {
+        // Hardcoded user data
+        List<String> user1Data = new ArrayList<>();
+        user1Data.add("User1 carol");
+        user1Data.add("User1 15");
+        user1Data.add("User1 Alone");
+
+        List<String> user2Data = new ArrayList<>();
+        user2Data.add("User2 marie");
+        user2Data.add("User2 30");
+        user2Data.add("User2 Married");
+
+        userData.put("user1", user1Data);
+        userData.put("user2", user2Data);
+    }
+
+    public static List<String> getUserData(String username) {
+        return userData.get(username);
+    }
+}
 
 4-Crée le view dans WEB-INF/views
 # customView.jsp
@@ -268,6 +406,44 @@ public class UserController extends HttpServlet {
     </head>
     <body>
         <h2>${message}</h2>
+    </body>
+    </html>
+
+# login.jsp
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Login</title>
+    </head>
+    <body>
+        <h2>Login</h2>
+        <form method="post" action="/sprinti/listControllers/logins">
+            <label for="username">Username:</label>
+            <input type="text" id="username" name="username"><br>
+            <label for="password">Password:</label>
+            <input type="password" id="password" name="password"><br>
+            <button type="submit">Login</button>
+        </form>
+        <c:if test="${not empty error}">
+            <p style="color:red;">${error}</p>
+        </c:if>
+    </body>
+    </html>
+
+# userData.jsp    
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>User Data</title>
+    </head>
+    <body>
+        <h2>User Data</h2>
+        <c:forEach var="data" items="${dataList}">
+            <p>${dataList}</p>
+        </c:forEach>
+        <form method="get" action="/sprint8/listControllers/logout">
+            <button type="submit">Logout</button>
+        </form>
     </body>
     </html>
 
