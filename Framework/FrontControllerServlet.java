@@ -5,6 +5,7 @@ import jakarta.servlet.http.*;
 import com.controller.GET;
 import com.controller.Param;
 import com.controller.RequestObject;
+import com.controller.Restapi;
 import com.controller.FormField;
 import com.controller.Mapping;
 import com.controller.POST;
@@ -25,6 +26,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @WebServlet({"/listControllers", "/listControllers/*"})
 public class FrontControllerServlet extends HttpServlet {
@@ -93,13 +96,13 @@ public class FrontControllerServlet extends HttpServlet {
         String relativeUrl = requestUrl.substring(contextPath.length());
     
         if (relativeUrl.contains("?")) {
-           relativeUrl = relativeUrl.substring(0, relativeUrl.indexOf('?'));
+            relativeUrl = relativeUrl.substring(0, relativeUrl.indexOf('?'));
         }
     
         Mapping mapping = urlMappings.get(relativeUrl);
     
-        out.println("<html><body>");
         if (relativeUrl.equals("/listControllers")) {
+            out.println("<html><body>");
             out.println("<h2>Controller Classes with Annotations:</h2>");
             for (Class<?> controller : getControllerClasses()) {
                 boolean foundMethod = false;
@@ -118,12 +121,15 @@ public class FrontControllerServlet extends HttpServlet {
                     out.println("<p>URL Patterns: " + urlPatterns.toString() + "</p>");
                 }
             }
+            out.println("</body></html>");
         } else if (relativeUrl.startsWith("/listControllers/")) {
             if (mapping != null) {
                 String simpleClassName = mapping.getClassName().substring(mapping.getClassName().lastIndexOf('.') + 1);
+                out.println("<html><body>");
                 out.println("<h2>URL: " + relativeUrl + "</h2>");
                 out.println("<p>Class: " + simpleClassName + "</p>");
                 out.println("<p>Method: " + mapping.getMethodName() + "</p>");
+                out.println("</body></html>");
     
                 try {
                     Class<?> controllerClass = Class.forName(mapping.getClassName());
@@ -132,21 +138,44 @@ public class FrontControllerServlet extends HttpServlet {
                     method.setAccessible(true);
     
                     Object[] methodParams = prepareMethodParams(method, request, response);
-    
                     Object result = method.invoke(controllerInstance, methodParams);
     
-                    if (result instanceof String) {
-                        out.println(result);
-                    } else if (result instanceof ModelView) {
-                        ModelView modelView = (ModelView) result;
-                        for (Map.Entry<String, Object> entry : modelView.getData().entrySet()) {
-                            request.setAttribute(entry.getKey(), entry.getValue());
+                    // Check if the method is annotated with @Restapi
+                    if (method.isAnnotationPresent(Restapi.class)) {
+                        response.setContentType("application/json");
+                        ObjectMapper objectMapper = new ObjectMapper();
+                        String jsonResponse;
+    
+                        if (result instanceof ModelView) {
+                            // Serialize only the "data" part of the ModelView
+                            ModelView modelView = (ModelView) result;
+                            jsonResponse = objectMapper.writeValueAsString(modelView.getData());
+                        } else if (result instanceof String || result instanceof Integer || result instanceof Boolean) {
+                            // If the result is a primitive type, wrap it in a JSON object
+                            Map<String, Object> jsonMap = new HashMap<>();
+                            jsonMap.put("value", result);
+                            jsonResponse = objectMapper.writeValueAsString(jsonMap);
+                        } else {
+                            // For any other type, directly convert to JSON
+                            jsonResponse = objectMapper.writeValueAsString(result);
                         }
-                        request.getRequestDispatcher(modelView.getUrl()).forward(request, response);
-                    } else if (result != null) {
-                        out.println("<p>Result (Non-String): " + result.toString() + "</p>");
+    
+                        response.getWriter().write(jsonResponse);
                     } else {
-                        out.println("<p>Result: null</p>");
+                        // Regular HTML response handling
+                        if (result instanceof ModelView) {
+                            ModelView modelView = (ModelView) result;
+                            for (Map.Entry<String, Object> entry : modelView.getData().entrySet()) {
+                                request.setAttribute(entry.getKey(), entry.getValue());
+                            }
+                            request.getRequestDispatcher(modelView.getUrl()).forward(request, response);
+                        } else if (result instanceof String) {
+                            out.println(result);
+                        } else if (result != null) {
+                            out.println("<p>Result (Non-String): " + result.toString() + "</p>");
+                        } else {
+                            out.println("<p>Result: null</p>");
+                        }
                     }
                 } catch (Exception e) {
                     handleError(response, "Error processing request: " + e.getMessage());
@@ -165,9 +194,10 @@ public class FrontControllerServlet extends HttpServlet {
                 }
             }
         }
-        out.println("</body></html>");
     }
-
+    
+    
+    
     private void forwardToJspView(String viewUrl, HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
         RequestDispatcher dispatcher = request.getRequestDispatcher(viewUrl);
         dispatcher.forward(request, response);

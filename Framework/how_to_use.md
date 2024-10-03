@@ -4,6 +4,7 @@
 The `ListControllersServlet` scans for controllers with the `@WebServlet` and `@GET` annotation and lists them on a web page.
 If there is a `@GET` annotation display the URL with the name of the controller
 
+
 ## Deployment et dossier necessaire
 - Compile and deploy the servlet on a Java web server.
 - Configure the `web.xml` with the correct package name.
@@ -109,7 +110,7 @@ Controller sans Annotation:
         }
     }
 
-3-Crée le GET, POST, Param, FormField, RequestObject, User, UserController, Mapping et ModelView class comme cela 
+3-Crée le GET, POST, Param, FormField, RequestObject, User, UserController, Mapping, Restapi, SampleController et ModelView class comme cela 
 # GET
     package com.controller;
 
@@ -297,6 +298,53 @@ public class UserController extends HttpServlet {
         dataList.add("Data 2 for " + username);
         dataList.add("Data 3 for " + username);
         return dataList;
+    }
+}
+
+###### Restapi
+package com.controller;
+
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+
+@Retention(RetentionPolicy.RUNTIME)
+public @interface Restapi {
+}
+
+###### SampleController
+package com.controller;
+
+import jakarta.servlet.annotation.WebServlet;
+import jakarta.servlet.http.HttpServlet;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import com.model.ModelView;
+
+@WebServlet(name = "SampleController", urlPatterns = {"/sampleController"})
+public class SampleController extends HttpServlet{
+
+    // A REST API method returning a simple string response
+    @Restapi
+    @GET("/stringResponse") // URL to access this method
+    public String getStringResponse(HttpServletRequest request, HttpServletResponse response) {
+        return "Hello, REST API!";
+    }
+    
+    // A REST API method returning an integer response
+    @Restapi
+    @GET("/intResponse") // URL to access this method
+    public int getIntResponse(HttpServletRequest request, HttpServletResponse response) {
+        return 42;
+    }
+    
+    // A REST API method returning a ModelView object
+    @Restapi
+    @GET("/modelViewResponse") // URL to access this method
+    public ModelView getModelViewResponse(HttpServletRequest request, HttpServletResponse response) {
+        ModelView modelView = new ModelView("/WEB-INF/views/customView.jsp");
+        modelView.addData("message", "Hello from ModelView");
+        modelView.addData("status", "success");
+        return modelView;
     }
 }
 
@@ -493,3 +541,7 @@ public class UserDataStore {
 7-On devrait directement arrivé dans l'index avec 2 inputs pour le sprint7 et 1 input pour le sprint6 entrer n'importe quel et on devrait etre reidirigé vers un modelView pour afficher l'input entrer 
 8-Acceder aux Donné du Mapping si L'URL existe en utilisant le lien : http://localhost:8080/nom_de_l'App/Custom Tout en executant la methode du controller avec l'annotation `@GET` pour renvoyer le ModelView et l'afficher via le views
 9-Acceder aux Donné du Mapping si L'URL existe en utilisant le lien :  http://localhost:8080/nom_de_l'App/Customa Tout en executant la methode du controller avec l'annotation `@GET` pour avoir les donnée comme dans le sprint3
+10-Pour tester on va utilisé les donnée dans SampleController, quand on appelle l'URL qui sont disponible dans celle ci, FrontControllerServlet va scanner la classe et si l'annotation Restapi est present la valeur de retour sera changé an JSON et si c'est un model View les valeurs de celle ci serant aussi transformé en JSON, pour tester on utilise le lien 
+ -http://localhost:8080/nom_de_l'App/intResponse
+ -http://localhost:8080/nom_de_l'App/StringResponse
+ -http://localhost:8080/nom_de_l'App/modelViewResponse
