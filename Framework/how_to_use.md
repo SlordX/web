@@ -112,7 +112,7 @@ Controller sans Annotation:
 
 3-Crée le GET, POST, Param, FormField, RequestObject, User, UserController, Mapping, Restapi, SampleController et ModelView class comme cela 
 # GET
-    package com.controller;
+    package com.annotation;
 
     import java.lang.annotation.ElementType;
     import java.lang.annotation.Retention;
@@ -126,7 +126,7 @@ Controller sans Annotation:
     }
 
 # POST
-    package com.controller;
+    package com.annotation;
 
     import java.lang.annotation.ElementType;
     import java.lang.annotation.Retention;
@@ -159,7 +159,7 @@ public class Mapping {
 }
 
 ### Param
-package com.controller;
+package com.annotation;
 
 import java.lang.annotation.*;
 
@@ -170,7 +170,7 @@ public @interface Param {
 }
 
 #### FormField
-package com.controller;
+package com.annotation;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -302,7 +302,7 @@ public class UserController extends HttpServlet {
 }
 
 ###### Restapi
-package com.controller;
+package com.annotation;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -545,3 +545,5 @@ public class UserDataStore {
  -http://localhost:8080/nom_de_l'App/intResponse
  -http://localhost:8080/nom_de_l'App/StringResponse
  -http://localhost:8080/nom_de_l'App/modelViewResponse
+11-Maintenant le FrontControllerServlet va aussi afficher les methods qui ne possédent pas d'annotation avec leurs url respectif
+,mais aussi si on appelle un method avec une @POST annotation avec un GET on aurra droit a une erreur et si c'est l'inverse où on appelle un GET avec un POST on aura aussi un message d'erreur 
