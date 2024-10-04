@@ -2,13 +2,13 @@ package com.example;
 
 import jakarta.servlet.*;
 import jakarta.servlet.http.*;
-import com.controller.GET;
-import com.controller.Param;
+import com.annotation.GET;
+import com.annotation.Param;
 import com.controller.RequestObject;
-import com.controller.Restapi;
-import com.controller.FormField;
+import com.annotation.Restapi;
+import com.annotation.FormField;
 import com.controller.Mapping;
-import com.controller.POST;
+import com.annotation.POST;
 import com.model.ModelView;
 import jakarta.servlet.annotation.*;
 
@@ -46,32 +46,38 @@ public class FrontControllerServlet extends HttpServlet {
             List<Class<?>> controllers = getClasses(controllerPackage);
             for (Class<?> controller : controllers) {
                 for (Method method : controller.getDeclaredMethods()) {
+                    String url = null;
+
+                    // Handle GET annotation
                     if (method.isAnnotationPresent(GET.class)) {
                         GET getAnnotation = method.getAnnotation(GET.class);
-                        String url = "/listControllers" + getAnnotation.value();
-                        if (urlMappings.containsKey(url)) {
-                            LOGGER.log(Level.SEVERE, "Duplicate URL mapping found: " + url);
-                            throw new ServletException("Duplicate URL mapping found for URL: " + url);
-                        }
-                        Mapping mapping = new Mapping(controller.getName(), method.getName());
-                        urlMappings.put(url, mapping);
+                        url = getAnnotation.value().isEmpty() ? "/listControllers/" + method.getName() : "/listControllers" + getAnnotation.value();
+
+                    // Handle POST annotation
                     } else if (method.isAnnotationPresent(POST.class)) {
                         POST postAnnotation = method.getAnnotation(POST.class);
-                        String url = "/listControllers" + postAnnotation.value();
-                        if (urlMappings.containsKey(url)) {
-                            LOGGER.log(Level.SEVERE, "Duplicate URL mapping found: " + url);
-                            throw new ServletException("Duplicate URL mapping found for URL: " + url);
-                        }
-                        Mapping mapping = new Mapping(controller.getName(), method.getName());
-                        urlMappings.put(url, mapping);
+                        url = postAnnotation.value().isEmpty() ? "/listControllers/" + method.getName() : "/listControllers" + postAnnotation.value();
+                    
+                    // Handle methods without any annotations (default to GET)
+                    } else {
+                        url = "/listControllers/" + controller.getSimpleName() + "/" + method.getName();  // Use method name as default URL for GET
                     }
+
+                    // Ensure no duplicate URL mappings
+                    if (urlMappings.containsKey(url)) {
+                        LOGGER.log(Level.SEVERE, "Duplicate URL mapping found for URL: " + url);
+                        throw new ServletException("Duplicate URL mapping found for URL: " + url);
+                    }
+
+                    // Map the URL to the method
+                    Mapping mapping = new Mapping(controller.getName(), method.getName());
+                    urlMappings.put(url, mapping);
                 }
             }
         } catch (IOException | ClassNotFoundException e) {
             throw new ServletException("Error scanning controllers", e);
         }
     }
-
 
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
@@ -103,24 +109,42 @@ public class FrontControllerServlet extends HttpServlet {
     
         if (relativeUrl.equals("/listControllers")) {
             out.println("<html><body>");
-            out.println("<h2>Controller Classes with Annotations:</h2>");
+            out.println("<h2>Controller Classes with Annotations or Default Methods:</h2>");
+            
             for (Class<?> controller : getControllerClasses()) {
                 boolean foundMethod = false;
                 StringBuilder urlPatterns = new StringBuilder();
+                
                 for (Method method : controller.getDeclaredMethods()) {
+                    String urlPattern = null;
+                    
+                    // Handle methods with GET or POST annotations
                     if (method.isAnnotationPresent(GET.class) || method.isAnnotationPresent(POST.class)) {
-                        String urlPattern = method.isAnnotationPresent(GET.class) ? method.getAnnotation(GET.class).value() : method.getAnnotation(POST.class).value();
-                        if (!foundMethod) {
-                            out.println("<p>" + controller.getSimpleName() + "</p>");
-                            foundMethod = true;
+                        if (method.isAnnotationPresent(GET.class)) {
+                            GET getAnnotation = method.getAnnotation(GET.class);
+                            urlPattern = getAnnotation.value().isEmpty() ? "/listControllers/" + method.getName() : "/listControllers" + getAnnotation.value();
+                        } else if (method.isAnnotationPresent(POST.class)) {
+                            POST postAnnotation = method.getAnnotation(POST.class);
+                            urlPattern = postAnnotation.value().isEmpty() ? "/listControllers/" + method.getName() : "/listControllers" + postAnnotation.value();
                         }
-                        urlPatterns.append(urlPattern).append("<br>");
+                    } else {
+                        // Handle methods without annotations (default to GET)
+                        urlPattern = "/listControllers/" + controller.getSimpleName() + "/" + method.getName(); // Default URL pattern
                     }
+                    
+                    // Print the controller name and URL patterns
+                    if (!foundMethod) {
+                        out.println("<p><strong>Controller:</strong> " + controller.getSimpleName() + "</p>");
+                        foundMethod = true;
+                    }
+                    urlPatterns.append(urlPattern).append("<br>");
                 }
+                
                 if (foundMethod) {
-                    out.println("<p>URL Patterns: " + urlPatterns.toString() + "</p>");
+                    out.println("<p>URL Patterns:</p><p>" + urlPatterns.toString() + "</p>");
                 }
             }
+            
             out.println("</body></html>");
         } else if (relativeUrl.startsWith("/listControllers/")) {
             if (mapping != null) {
@@ -137,26 +161,26 @@ public class FrontControllerServlet extends HttpServlet {
                     Method method = getControllerMethod(controllerClass, mapping.getMethodName());
                     method.setAccessible(true);
     
+                    // Check if the HTTP verb (GET/POST) matches the method annotation
+                    checkHttpVerbCompatibility(method, request.getMethod());
+    
                     Object[] methodParams = prepareMethodParams(method, request, response);
                     Object result = method.invoke(controllerInstance, methodParams);
     
-                    // Check if the method is annotated with @Restapi
+                    // Handle REST API responses
                     if (method.isAnnotationPresent(Restapi.class)) {
                         response.setContentType("application/json");
                         ObjectMapper objectMapper = new ObjectMapper();
                         String jsonResponse;
     
                         if (result instanceof ModelView) {
-                            // Serialize only the "data" part of the ModelView
                             ModelView modelView = (ModelView) result;
                             jsonResponse = objectMapper.writeValueAsString(modelView.getData());
                         } else if (result instanceof String || result instanceof Integer || result instanceof Boolean) {
-                            // If the result is a primitive type, wrap it in a JSON object
                             Map<String, Object> jsonMap = new HashMap<>();
                             jsonMap.put("value", result);
                             jsonResponse = objectMapper.writeValueAsString(jsonMap);
                         } else {
-                            // For any other type, directly convert to JSON
                             jsonResponse = objectMapper.writeValueAsString(result);
                         }
     
@@ -193,6 +217,23 @@ public class FrontControllerServlet extends HttpServlet {
                     handleError(response, "No method associated with the URL: " + relativeUrl);
                 }
             }
+        }
+    }
+    
+    
+
+    private void checkHttpVerbCompatibility(Method method, String httpMethod) throws ServletException {
+        // If the method has a @GET annotation but the HTTP request is POST
+        if (method.isAnnotationPresent(GET.class) && !"GET".equalsIgnoreCase(httpMethod)) {
+            throw new ServletException("Invalid HTTP method. Expected GET but received " + httpMethod);
+        } 
+        // If the method has a @POST annotation but the HTTP request is GET
+        else if (method.isAnnotationPresent(POST.class) && !"POST".equalsIgnoreCase(httpMethod)) {
+            throw new ServletException("Invalid HTTP method. Expected POST but received " + httpMethod);
+        } 
+        // If no annotations are present, assume it is GET by default
+        else if (!method.isAnnotationPresent(GET.class) && !method.isAnnotationPresent(POST.class) && !"GET".equalsIgnoreCase(httpMethod)) {
+            throw new ServletException("Invalid HTTP method. Expected GET by default but received " + httpMethod);
         }
     }
     
