@@ -547,3 +547,5 @@ public class UserDataStore {
  -http://localhost:8080/nom_de_l'App/modelViewResponse
 11-Maintenant le FrontControllerServlet va aussi afficher les methods qui ne possédent pas d'annotation avec leurs url respectif
 ,mais aussi si on appelle un method avec une @POST annotation avec un GET on aurra droit a une erreur et si c'est l'inverse où on appelle un GET avec un POST on aura aussi un message d'erreur 
+12-Maintenant quand il y aura des URL dupliqué le server enverra une message d'erreur
+on modifié le init et get dans la classe du FrontControllerServlet

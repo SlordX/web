@@ -66,7 +66,8 @@ public class FrontControllerServlet extends HttpServlet {
                     // Ensure no duplicate URL mappings
                     if (urlMappings.containsKey(url)) {
                         LOGGER.log(Level.SEVERE, "Duplicate URL mapping found for URL: " + url);
-                        throw new ServletException("Duplicate URL mapping found for URL: " + url);
+                        context.setAttribute("initError", "Duplicate URL mapping found for URL: " + url);
+                        return;
                     }
 
                     // Map the URL to the method
@@ -75,12 +76,25 @@ public class FrontControllerServlet extends HttpServlet {
                 }
             }
         } catch (IOException | ClassNotFoundException e) {
-            throw new ServletException("Error scanning controllers", e);
+            context.setAttribute("initError", "Error scanning controllers: " + e.getMessage());
         }
     }
 
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        ServletContext context = getServletContext();
+        String initError = (String) context.getAttribute("initError");
+
+        if (initError != null) {
+            response.setContentType("text/html");
+            PrintWriter out = response.getWriter();
+            out.println("<html><body>");
+            out.println("<h2>Error 500</h2>");
+            out.println("<h3>Error: " + initError + "</h3>");
+            out.println("</body></html>");
+            return;
+        }
+
         processRequest(request, response);
     }
 
@@ -104,21 +118,39 @@ public class FrontControllerServlet extends HttpServlet {
         if (relativeUrl.contains("?")) {
             relativeUrl = relativeUrl.substring(0, relativeUrl.indexOf('?'));
         }
+
+        if (urlMappings.containsKey(requestUrl) && urlMappings.get(requestUrl) == null) {
+            // Handle duplicate URL mapping error
+            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR); // Set status code 500
+            handleError(response, "Duplicate URL mapping found for URL: " + requestUrl);
+            return;  // Stop further processing
+        }
     
         Mapping mapping = urlMappings.get(relativeUrl);
     
         if (relativeUrl.equals("/listControllers")) {
-            out.println("<html><body>");
-            out.println("<h2>Controller Classes with Annotations or Default Methods:</h2>");
+            out.println("<html><head><style>"
+                        + "body {font-family: Arial, sans-serif;}"
+                        + ".controller-section {margin-bottom: 20px;}"
+                        + ".controller-title {font-size: 1.2em; font-weight: bold; color: #333;}"
+                        + ".annotation-methods {color: #0a7f9b;}"
+                        + ".default-methods {color: #555; font-style: italic;}"
+                        + ".url-pattern {margin-left: 15px; color: #666;}"
+                        + "</style></head><body>");
+            
+            // Separate sections for controllers with annotations and default methods
+            out.println("<h3 class='annotation-methods'>Controllers with Annotations and default URL:</h3>");
             
             for (Class<?> controller : getControllerClasses()) {
-                boolean foundMethod = false;
-                StringBuilder urlPatterns = new StringBuilder();
+                boolean hasAnnotation = false;
+                StringBuilder annotationMethods = new StringBuilder();
+                StringBuilder defaultMethods = new StringBuilder();
                 
                 for (Method method : controller.getDeclaredMethods()) {
                     String urlPattern = null;
+                    boolean isAnnotated = false;
                     
-                    // Handle methods with GET or POST annotations
+                    // Check for GET or POST annotations
                     if (method.isAnnotationPresent(GET.class) || method.isAnnotationPresent(POST.class)) {
                         if (method.isAnnotationPresent(GET.class)) {
                             GET getAnnotation = method.getAnnotation(GET.class);
@@ -127,21 +159,31 @@ public class FrontControllerServlet extends HttpServlet {
                             POST postAnnotation = method.getAnnotation(POST.class);
                             urlPattern = postAnnotation.value().isEmpty() ? "/listControllers/" + method.getName() : "/listControllers" + postAnnotation.value();
                         }
-                    } else {
-                        // Handle methods without annotations (default to GET)
-                        urlPattern = "/listControllers/" + controller.getSimpleName() + "/" + method.getName(); // Default URL pattern
+                        annotationMethods.append("<span class='url-pattern'>" + urlPattern + "</span><br>");
+                        hasAnnotation = true;
                     }
-                    
-                    // Print the controller name and URL patterns
-                    if (!foundMethod) {
-                        out.println("<p><strong>Controller:</strong> " + controller.getSimpleName() + "</p>");
-                        foundMethod = true;
+        
+                    // Also, handle default GET methods (even if there are annotations)
+                    if (!method.isAnnotationPresent(GET.class) && !method.isAnnotationPresent(POST.class)) {
+                        urlPattern = "/listControllers/" + controller.getSimpleName() + "/" + method.getName();
+                        defaultMethods.append("<span class='url-pattern'>" + urlPattern + "</span><br>");
                     }
-                    urlPatterns.append(urlPattern).append("<br>");
+                }
+        
+                // Display controller name and methods with annotations
+                if (annotationMethods.length() > 0) {
+                    out.println("<div class='controller-section'>");
+                    out.println("<p class='controller-title'>Controller: " + controller.getSimpleName() + "</p>");
+                    out.println("<p>URL Patterns (Annotated Methods):</p>" + annotationMethods.toString());
+                    out.println("</div>");
                 }
                 
-                if (foundMethod) {
-                    out.println("<p>URL Patterns:</p><p>" + urlPatterns.toString() + "</p>");
+                // Display default methods separately if there are any
+                if (defaultMethods.length() > 0) {
+                    out.println("<div class='controller-section'>");
+                    out.println("<p class='controller-title'>Controller: " + controller.getSimpleName() + "</p>");
+                    out.println("<p class='default-methods'>URL Patterns (Default GET Methods):</p>" + defaultMethods.toString());
+                    out.println("</div>");
                 }
             }
             
@@ -364,7 +406,7 @@ public class FrontControllerServlet extends HttpServlet {
         response.setContentType("text/html");
         PrintWriter out = response.getWriter();
         out.println("<html><body>");
-        out.println("<h2>Error</h2>");
+        out.println("<h2>Error 404</h2>");
         out.println("<p>" + errorMessage + "</p>");
         out.println("</body></html>");
     }
