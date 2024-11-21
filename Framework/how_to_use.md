@@ -445,6 +445,30 @@ public class UserDataStore {
     }
 }
 
+###### DataBaseConnection
+package com.controller;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+
+public class DatabaseConnection {
+    private static final String URL = "jdbc:mysql://localhost:3306/savefile";
+    private static final String USER = "root";
+    private static final String PASSWORD = "";
+
+    public static Connection getConnection() throws SQLException {
+        try {
+            Class.forName("com.mysql.cj.jdbc.Driver"); // Load MySQL JDBC driver explicitly
+        } catch (ClassNotFoundException e) {
+            throw new SQLException("MySQL JDBC driver not found in classpath.", e);
+        }
+        return DriverManager.getConnection(URL, USER, PASSWORD);
+    }
+}
+
+
+
 4-Crée le view dans WEB-INF/views
 # customView.jsp
     <%@ page contentType="text/html;charset=UTF-8" language="java" %>
@@ -549,3 +573,33 @@ public class UserDataStore {
 ,mais aussi si on appelle un method avec une @POST annotation avec un GET on aurra droit a une erreur et si c'est l'inverse où on appelle un GET avec un POST on aura aussi un message d'erreur 
 12-Maintenant quand il y aura des URL dupliqué le server enverra une message d'erreur
 on modifié le init et get dans la classe du FrontControllerServlet
+13-Apres avoir se connecter, on va voir les données de l'utilisateur et aussi un bouton pour importer un fichier et le sauvegardé dans notre base de donnée
+base et table 
+use savefile;
+CREATE TABLE uploaded_files (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    file_data LONGBLOB NOT NULL
+);
+The Form to Upload the file should look like this 
+<!DOCTYPE html>
+<html>
+<head>
+    <title>User Data</title>
+</head>
+<body>
+    <h2>User Data</h2>
+    <c:forEach var="data" items="${dataList}">
+        <p>${dataList}</p>
+    </c:forEach>
+
+    <form method="post" action="/sprintl/listControllers/uploadFile" enctype="multipart/form-data">
+        <label for="file">Upload File:</label>
+        <input type="file" name="file" id="file" required>
+        <button type="submit">Upload</button>
+    </form>
+
+    <form method="get" action="/sprintl/listControllers/logout">
+        <button type="submit">Logout</button>
+    </form>
+</body>
+</html>

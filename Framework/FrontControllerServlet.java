@@ -7,6 +7,7 @@ import com.annotation.Param;
 import com.controller.RequestObject;
 import com.annotation.Restapi;
 import com.annotation.FormField;
+import com.controller.DatabaseConnection;
 import com.controller.Mapping;
 import com.annotation.POST;
 import com.model.ModelView;
@@ -19,6 +20,9 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.io.File;
 import java.net.URL;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.ArrayList;
@@ -30,6 +34,7 @@ import java.util.logging.Logger;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 @WebServlet({"/listControllers", "/listControllers/*"})
+@MultipartConfig
 public class FrontControllerServlet extends HttpServlet {
     private String controllerPackage;
     private HashMap<String, Mapping> urlMappings;
@@ -114,6 +119,11 @@ public class FrontControllerServlet extends HttpServlet {
         String requestUrl = request.getRequestURI();
         String contextPath = request.getContextPath();
         String relativeUrl = requestUrl.substring(contextPath.length());
+
+        if (relativeUrl.equals("/listControllers/uploadFile")) {
+            handleFileUpload(request, response);
+            return;
+        }
     
         if (relativeUrl.contains("?")) {
             relativeUrl = relativeUrl.substring(0, relativeUrl.indexOf('?'));
@@ -259,6 +269,31 @@ public class FrontControllerServlet extends HttpServlet {
                     handleError(response, "No method associated with the URL: " + relativeUrl);
                 }
             }
+        }
+    }
+    
+    private void handleFileUpload(HttpServletRequest request, HttpServletResponse response) throws IOException, ServletException {
+        Part filePart = request.getPart("file"); // Retrieves <input type="file" name="file">
+        if (filePart != null) {
+            byte[] fileBytes = filePart.getInputStream().readAllBytes();
+            saveFileToDatabase(fileBytes);
+            response.getWriter().println("<p>File uploaded and saved to database successfully.</p>");
+        } else {
+            response.getWriter().println("<p>No file uploaded.</p>");
+        }
+    }
+
+    private void saveFileToDatabase(byte[] fileBytes) {
+        String insertSQL = "INSERT INTO uploaded_files (file_data) VALUES (?)";
+        try (Connection connection = DatabaseConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(insertSQL)) {
+            connection.setAutoCommit(false);  // Optional, ensures the transaction is committed manually if needed
+            statement.setBytes(1, fileBytes);
+            int rowsAffected = statement.executeUpdate();
+            connection.commit();  // Explicitly commit the transaction if auto-commit is off
+            System.out.println("Rows affected: " + rowsAffected);
+        } catch (SQLException e) {
+            System.err.println("Database insertion failed: " + e.getMessage());
         }
     }
     
