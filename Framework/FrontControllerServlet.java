@@ -336,27 +336,35 @@ public class FrontControllerServlet extends HttpServlet {
         Class<?>[] paramTypes = method.getParameterTypes();
         Annotation[][] paramAnnotations = method.getParameterAnnotations();
         Object[] params = new Object[paramTypes.length];
-        
+    
         for (int i = 0; i < paramTypes.length; i++) {
-            for (Annotation annotation : paramAnnotations[i]) {
-                if (annotation instanceof RequestObject) {
-                    Object requestObject = populateRequestObject(paramTypes[i], request);
-                    List<String> validationErrors = Validator.validate(requestObject);
-                    
-                    // If validation errors are found, throw a ServletException with a custom message
-                    if (!validationErrors.isEmpty()) {
-                        throw new ServletException("Validation error: " + String.join(", ", validationErrors));
+            if (paramTypes[i] == MySession.class) {
+                params[i] = new MySession(request.getSession());
+            } else {
+                for (Annotation annotation : paramAnnotations[i]) {
+                    if (annotation instanceof Param) {
+                        Param param = (Param) annotation;
+                        String paramName = param.name();
+                        String paramValue = request.getParameter(paramName);
+                        params[i] = convert(paramTypes[i], paramValue);
+                    } else if (annotation instanceof RequestObject) {
+                        Object requestObject = populateRequestObject(paramTypes[i], request);
+                        
+                        // Map to hold field-specific errors
+                        Map<String, String> fieldErrors = Validator.validate(requestObject);
+    
+                        // If there are validation errors, forward to form with errors
+                        if (!fieldErrors.isEmpty()) {
+                            request.setAttribute("fieldErrors", fieldErrors);
+                            request.getRequestDispatcher("/WEB-INF/views/form.jsp").forward(request, response);
+                            return null;
+                        }
+                        params[i] = requestObject;
+                    } else if (paramTypes[i] == HttpServletRequest.class) {
+                        params[i] = request;
+                    } else if (paramTypes[i] == HttpServletResponse.class) {
+                        params[i] = response;
                     }
-                    params[i] = requestObject;
-                } else if (annotation instanceof Param) {
-                    Param param = (Param) annotation;
-                    String paramName = param.name();
-                    String paramValue = request.getParameter(paramName);
-                    params[i] = convert(paramTypes[i], paramValue);
-                } else if (paramTypes[i] == HttpServletRequest.class) {
-                    params[i] = request;
-                } else if (paramTypes[i] == HttpServletResponse.class) {
-                    params[i] = response;
                 }
             }
         }

@@ -554,12 +554,12 @@ package com.controller;
 import com.annotation.*;
 
 import java.lang.reflect.Field;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 
 public class Validator {
-    public static List<String> validate(Object obj) {
-        List<String> errors = new ArrayList<>();
+    public static Map<String, String> validate(Object obj) {
+        Map<String, String> errors = new HashMap<>();
         
         for (Field field : obj.getClass().getDeclaredFields()) {
             field.setAccessible(true);
@@ -570,14 +570,14 @@ public class Validator {
                 // Check @NotNull
                 if (field.isAnnotationPresent(NotNull.class) && value == null) {
                     NotNull notNull = field.getAnnotation(NotNull.class);
-                    errors.add(notNull.message());
+                    errors.put(field.getName(), notNull.message());
                 }
                 
                 // Check @MinLength
                 if (field.isAnnotationPresent(MinLength.class) && value != null) {
                     MinLength minLength = field.getAnnotation(MinLength.class);
                     if (value.toString().length() < minLength.value()) {
-                        errors.add(minLength.message());
+                        errors.put(field.getName(), minLength.message());
                     }
                 }
                 
@@ -585,7 +585,7 @@ public class Validator {
                 if (field.isAnnotationPresent(MaxLength.class) && value != null) {
                     MaxLength maxLength = field.getAnnotation(MaxLength.class);
                     if (value.toString().length() > maxLength.value()) {
-                        errors.add(maxLength.message());
+                        errors.put(field.getName(), maxLength.message());
                     }
                 }
                 
@@ -593,7 +593,7 @@ public class Validator {
                 if (field.isAnnotationPresent(Numeric.class) && value != null) {
                     if (!value.toString().matches("\\d+")) {
                         Numeric numeric = field.getAnnotation(Numeric.class);
-                        errors.add(numeric.message());
+                        errors.put(field.getName(), numeric.message());
                     }
                 }
 
@@ -602,7 +602,7 @@ public class Validator {
                     String emailPattern = "^[\\w._%+-]+@[\\w.-]+\\.[a-zA-Z]{2,}$";
                     if (!value.toString().matches(emailPattern)) {
                         Email email = field.getAnnotation(Email.class);
-                        errors.add(email.message());
+                        errors.put(field.getName(), email.message());
                     }
                 }
 
@@ -610,7 +610,7 @@ public class Validator {
                 if (field.isAnnotationPresent(Min.class) && value != null) {
                     Min min = field.getAnnotation(Min.class);
                     if (Integer.parseInt(value.toString()) < min.value()) {
-                        errors.add(min.message());
+                        errors.put(field.getName(), min.message());
                     }
                 }
 
@@ -618,12 +618,12 @@ public class Validator {
                 if (field.isAnnotationPresent(Pattern.class) && value != null) {
                     Pattern pattern = field.getAnnotation(Pattern.class);
                     if (!value.toString().matches(pattern.regex())) {
-                        errors.add(pattern.message());
+                        errors.put(field.getName(), pattern.message());
                     }
                 }
 
             } catch (IllegalAccessException e) {
-                errors.add("Error accessing field: " + field.getName());
+                errors.put(field.getName(), "Error accessing field: " + field.getName());
             }
         }
         
@@ -631,10 +631,10 @@ public class Validator {
     }
 }
 
+
 ##### EmpFormController
 package com.controller;
 
-import com.annotation.GET;
 import com.annotation.POST;
 import com.controller.RequestObject;
 import com.model.EmpForm;
@@ -642,6 +642,9 @@ import com.controller.Validator;
 import com.model.ModelView;
 
 import java.util.List;
+import java.util.Map;
+
+import com.annotation.GET;
 
 public class EmpFormController {
 
@@ -654,19 +657,23 @@ public class EmpFormController {
 
     @POST("/submitEmpForm")
     public ModelView submitEmpForm(@RequestObject EmpForm form) {
-        List<String> errors = Validator.validate(form);
+        // Validator now returns a Map<String, String> of field-specific errors
+        Map<String, String> fieldErrors = Validator.validate(form);
 
         ModelView modelView = new ModelView();
-        if (errors.isEmpty()) {
+        if (fieldErrors.isEmpty()) {
             modelView.addAttribute("success", "Employee form submitted successfully!");
             modelView.setUrl("/WEB-INF/views/empSuccess.jsp");
         } else {
-            modelView.addAttribute("errors", errors);
+            // Pass field-specific errors to the ModelView
+            modelView.addAttribute("fieldErrors", fieldErrors);
             modelView.setUrl("/WEB-INF/views/form.jsp");
         }
         return modelView;
     }
+
 }
+
 
 ##### EmpForm
 package com.model;
@@ -803,35 +810,67 @@ public class EmpForm {
 
 ## form.jsp
 <%@ page language="java" contentType="text/html; charset=ISO-8859-1" pageEncoding="ISO-8859-1"%>
-<%@ page import="java.util.List" %>  <!-- Add this import statement -->
+<%@ page import="java.util.Map" %>  <!-- Import for Map interface -->
 <!DOCTYPE html>
 <html>
 <head>
     <title>Employee Form</title>
+    <style>
+        .error-message {
+            color: red;
+            font-size: small;
+        }
+    </style>
 </head>
 <body>
     <h2>Employee Form</h2>
 
+    <%
+        // Retrieve field-specific errors
+        Map<String, String> fieldErrors = (Map<String, String>) request.getAttribute("fieldErrors");
+    %>
+
     <form action="${pageContext.request.contextPath}/listControllers/submitEmpForm" method="post">
         <label for="name">Employee Name:</label>
-        <input type="text" name="name" id="name" value="${param.name}"><br>
+        <input type="text" name="name" id="name" value="${param.name}">
+        <% if (fieldErrors != null && fieldErrors.containsKey("name")) { %>
+            <span class="error-message"><%= fieldErrors.get("name") %></span>
+        <% } %>
+        <br>
 
         <label for="employeeId">Employee ID:</label>
-        <input type="text" name="employeeId" id="employeeId" value="${param.employeeId}"><br>
+        <input type="text" name="employeeId" id="employeeId" value="${param.employeeId}">
+        <% if (fieldErrors != null && fieldErrors.containsKey("employeeId")) { %>
+            <span class="error-message"><%= fieldErrors.get("employeeId") %></span>
+        <% } %>
+        <br>
 
         <label for="email">Email:</label>
-        <input type="text" name="email" id="email" value="${param.email}"><br>
+        <input type="text" name="email" id="email" value="${param.email}">
+        <% if (fieldErrors != null && fieldErrors.containsKey("email")) { %>
+            <span class="error-message"><%= fieldErrors.get("email") %></span>
+        <% } %>
+        <br>
 
         <label for="age">Age:</label>
-        <input type="number" name="age" id="age" value="${param.age}"><br>
+        <input type="number" name="age" id="age" value="${param.age}">
+        <% if (fieldErrors != null && fieldErrors.containsKey("age")) { %>
+            <span class="error-message"><%= fieldErrors.get("age") %></span>
+        <% } %>
+        <br>
 
         <label for="position">Position:</label>
-        <input type="text" name="position" id="position" value="${param.position}"><br>
+        <input type="text" name="position" id="position" value="${param.position}">
+        <% if (fieldErrors != null && fieldErrors.containsKey("position")) { %>
+            <span class="error-message"><%= fieldErrors.get("position") %></span>
+        <% } %>
+        <br>
 
         <button type="submit">Submit</button>
     </form>
 </body>
 </html>
+
 
 
 ## Usage
@@ -880,3 +919,4 @@ The Form to Upload the file should look like this
 </html>
 
 14-Maintenant quand l'employer va entrer des donnée dans le formulaire la classe de validation va le verifier et que quelque chose manque ou ne correspond au donnée necessaire, le FrontControllerServlet va renvoyer une erreur
+15-Avec la nouvelle mise a jour quand une erreur sera vue par la classe validator, l'erreur sera directement renvoyer dans la page du form avec les donnée que l'utilisarteur ou l'erreur a été reperé
