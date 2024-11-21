@@ -467,7 +467,249 @@ public class DatabaseConnection {
     }
 }
 
+##### Email
+package com.annotation;
 
+import java.lang.annotation.*;
+
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.FIELD)
+public @interface Email {
+    String message() default "Invalid email format";
+}
+
+##### MaxLength
+package com.annotation;
+
+import java.lang.annotation.*;
+
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.FIELD)
+public @interface MaxLength {
+    int value();
+    String message() default "Field exceeds maximum length";
+}
+
+##### MinLength
+package com.annotation;
+
+import java.lang.annotation.*;
+
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.FIELD)
+public @interface MinLength {
+    int value();
+    String message() default "Field length is too short";
+}
+
+##### Min
+package com.annotation;
+
+import java.lang.annotation.*;
+
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.FIELD)
+public @interface Min {
+    int value();
+    String message() default "Value is below the minimum limit";
+}
+
+##### NotNull
+package com.annotation;
+
+import java.lang.annotation.*;
+
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.FIELD)
+public @interface NotNull {
+    String message() default "Field must not be null";
+}
+
+##### Numeric
+package com.annotation;
+
+import java.lang.annotation.*;
+
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.FIELD)
+public @interface Numeric {
+    String message() default "Field must be numeric";
+}
+
+##### Pattern
+package com.annotation;
+
+import java.lang.annotation.*;
+
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.FIELD)
+public @interface Pattern {
+    String regex();
+    String message() default "Field does not match the required pattern";
+}
+
+##### Validator
+package com.controller;
+
+import com.annotation.*;
+
+import java.lang.reflect.Field;
+import java.util.ArrayList;
+import java.util.List;
+
+public class Validator {
+    public static List<String> validate(Object obj) {
+        List<String> errors = new ArrayList<>();
+        
+        for (Field field : obj.getClass().getDeclaredFields()) {
+            field.setAccessible(true);
+            
+            try {
+                Object value = field.get(obj);
+                
+                // Check @NotNull
+                if (field.isAnnotationPresent(NotNull.class) && value == null) {
+                    NotNull notNull = field.getAnnotation(NotNull.class);
+                    errors.add(notNull.message());
+                }
+                
+                // Check @MinLength
+                if (field.isAnnotationPresent(MinLength.class) && value != null) {
+                    MinLength minLength = field.getAnnotation(MinLength.class);
+                    if (value.toString().length() < minLength.value()) {
+                        errors.add(minLength.message());
+                    }
+                }
+                
+                // Check @MaxLength
+                if (field.isAnnotationPresent(MaxLength.class) && value != null) {
+                    MaxLength maxLength = field.getAnnotation(MaxLength.class);
+                    if (value.toString().length() > maxLength.value()) {
+                        errors.add(maxLength.message());
+                    }
+                }
+                
+                // Check @Numeric
+                if (field.isAnnotationPresent(Numeric.class) && value != null) {
+                    if (!value.toString().matches("\\d+")) {
+                        Numeric numeric = field.getAnnotation(Numeric.class);
+                        errors.add(numeric.message());
+                    }
+                }
+
+                // Check @Email
+                if (field.isAnnotationPresent(Email.class) && value != null) {
+                    String emailPattern = "^[\\w._%+-]+@[\\w.-]+\\.[a-zA-Z]{2,}$";
+                    if (!value.toString().matches(emailPattern)) {
+                        Email email = field.getAnnotation(Email.class);
+                        errors.add(email.message());
+                    }
+                }
+
+                // Check @Min
+                if (field.isAnnotationPresent(Min.class) && value != null) {
+                    Min min = field.getAnnotation(Min.class);
+                    if (Integer.parseInt(value.toString()) < min.value()) {
+                        errors.add(min.message());
+                    }
+                }
+
+                // Check @Pattern
+                if (field.isAnnotationPresent(Pattern.class) && value != null) {
+                    Pattern pattern = field.getAnnotation(Pattern.class);
+                    if (!value.toString().matches(pattern.regex())) {
+                        errors.add(pattern.message());
+                    }
+                }
+
+            } catch (IllegalAccessException e) {
+                errors.add("Error accessing field: " + field.getName());
+            }
+        }
+        
+        return errors;
+    }
+}
+
+##### EmpFormController
+package com.controller;
+
+import com.annotation.GET;
+import com.annotation.POST;
+import com.controller.RequestObject;
+import com.model.EmpForm;
+import com.controller.Validator;
+import com.model.ModelView;
+
+import java.util.List;
+
+public class EmpFormController {
+
+    @GET("/form")
+    public ModelView showLoginForm() {
+        // This should load the form page
+        ModelView mv = new ModelView("/WEB-INF/views/form.jsp");
+        return mv;
+    }
+
+    @POST("/submitEmpForm")
+    public ModelView submitEmpForm(@RequestObject EmpForm form) {
+        List<String> errors = Validator.validate(form);
+
+        ModelView modelView = new ModelView();
+        if (errors.isEmpty()) {
+            modelView.addAttribute("success", "Employee form submitted successfully!");
+            modelView.setUrl("/WEB-INF/views/empSuccess.jsp");
+        } else {
+            modelView.addAttribute("errors", errors);
+            modelView.setUrl("/WEB-INF/views/form.jsp");
+        }
+        return modelView;
+    }
+}
+
+##### EmpForm
+package com.model;
+
+import com.annotation.*;
+
+public class EmpForm {
+    @NotNull(message = "Employee name is required")
+    private String name;
+    
+    @NotNull(message = "Employee ID is required")
+    @MinLength(value = 5, message = "Employee ID must be at least 5 characters long")
+    @MaxLength(value = 10, message = "Employee ID must not exceed 10 characters")
+    @Numeric(message = "Employee ID must be numeric")
+    private String employeeId;
+    
+    @NotNull(message = "Email is required")
+    @Email(message = "Invalid email format")
+    private String email;
+    
+    @Min(value = 18, message = "Employee must be at least 18 years old")
+    private int age;
+    
+    @NotNull(message = "Position is required")
+    @Pattern(regex = "^(Manager|Developer|Designer)$", message = "Position must be 'Manager', 'Developer', or 'Designer'")
+    private String position;
+
+    // Getters and setters
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
+
+    public String getEmployeeId() { return employeeId; }
+    public void setEmployeeId(String employeeId) { this.employeeId = employeeId; }
+
+    public String getEmail() { return email; }
+    public void setEmail(String email) { this.email = email; }
+
+    public int getAge() { return age; }
+    public void setAge(int age) { this.age = age; }
+
+    public String getPosition() { return position; }
+    public void setPosition(String position) { this.position = position; }
+}
 
 4-Crée le view dans WEB-INF/views
 # customView.jsp
@@ -559,6 +801,39 @@ public class DatabaseConnection {
 </body>
 </html>
 
+## form.jsp
+<%@ page language="java" contentType="text/html; charset=ISO-8859-1" pageEncoding="ISO-8859-1"%>
+<%@ page import="java.util.List" %>  <!-- Add this import statement -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Employee Form</title>
+</head>
+<body>
+    <h2>Employee Form</h2>
+
+    <form action="${pageContext.request.contextPath}/listControllers/submitEmpForm" method="post">
+        <label for="name">Employee Name:</label>
+        <input type="text" name="name" id="name" value="${param.name}"><br>
+
+        <label for="employeeId">Employee ID:</label>
+        <input type="text" name="employeeId" id="employeeId" value="${param.employeeId}"><br>
+
+        <label for="email">Email:</label>
+        <input type="text" name="email" id="email" value="${param.email}"><br>
+
+        <label for="age">Age:</label>
+        <input type="number" name="age" id="age" value="${param.age}"><br>
+
+        <label for="position">Position:</label>
+        <input type="text" name="position" id="position" value="${param.position}"><br>
+
+        <button type="submit">Submit</button>
+    </form>
+</body>
+</html>
+
+
 ## Usage
 5-Compilé le Servlet et Deployer
 6-Acceder aux Servlet en utilisant le lien : http://localhost:8080/nom_de_l'App/
@@ -603,3 +878,5 @@ The Form to Upload the file should look like this
     </form>
 </body>
 </html>
+
+14-Maintenant quand l'employer va entrer des donnée dans le formulaire la classe de validation va le verifier et que quelque chose manque ou ne correspond au donnée necessaire, le FrontControllerServlet va renvoyer une erreur

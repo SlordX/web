@@ -5,11 +5,13 @@ import jakarta.servlet.http.*;
 import com.annotation.GET;
 import com.annotation.Param;
 import com.controller.RequestObject;
+import com.controller.Validator;
 import com.annotation.Restapi;
 import com.annotation.FormField;
 import com.controller.DatabaseConnection;
 import com.controller.Mapping;
 import com.annotation.POST;
+import com.model.EmpForm;
 import com.model.ModelView;
 import jakarta.servlet.annotation.*;
 
@@ -334,24 +336,27 @@ public class FrontControllerServlet extends HttpServlet {
         Class<?>[] paramTypes = method.getParameterTypes();
         Annotation[][] paramAnnotations = method.getParameterAnnotations();
         Object[] params = new Object[paramTypes.length];
-    
+        
         for (int i = 0; i < paramTypes.length; i++) {
-            if (paramTypes[i] == MySession.class) {
-                params[i] = new MySession(request.getSession());
-            } else {
-                for (Annotation annotation : paramAnnotations[i]) {
-                    if (annotation instanceof Param) {
-                        Param param = (Param) annotation;
-                        String paramName = param.name();
-                        String paramValue = request.getParameter(paramName);
-                        params[i] = convert(paramTypes[i], paramValue);
-                    } else if (annotation instanceof RequestObject) {
-                        params[i] = populateRequestObject(paramTypes[i], request);
-                    } else if (paramTypes[i] == HttpServletRequest.class) {
-                        params[i] = request;
-                    } else if (paramTypes[i] == HttpServletResponse.class) {
-                        params[i] = response;
+            for (Annotation annotation : paramAnnotations[i]) {
+                if (annotation instanceof RequestObject) {
+                    Object requestObject = populateRequestObject(paramTypes[i], request);
+                    List<String> validationErrors = Validator.validate(requestObject);
+                    
+                    // If validation errors are found, throw a ServletException with a custom message
+                    if (!validationErrors.isEmpty()) {
+                        throw new ServletException("Validation error: " + String.join(", ", validationErrors));
                     }
+                    params[i] = requestObject;
+                } else if (annotation instanceof Param) {
+                    Param param = (Param) annotation;
+                    String paramName = param.name();
+                    String paramValue = request.getParameter(paramName);
+                    params[i] = convert(paramTypes[i], paramValue);
+                } else if (paramTypes[i] == HttpServletRequest.class) {
+                    params[i] = request;
+                } else if (paramTypes[i] == HttpServletResponse.class) {
+                    params[i] = response;
                 }
             }
         }
@@ -445,4 +450,11 @@ public class FrontControllerServlet extends HttpServlet {
         out.println("<p>" + errorMessage + "</p>");
         out.println("</body></html>");
     }
+
+    public class ValidationException extends Exception {
+        public ValidationException(String message) {
+            super(message); // Pass the message to the superclass constructor
+        }
+    }
+    
 }
